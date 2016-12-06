@@ -1062,6 +1062,16 @@ bool html_keypress(struct content *c, uint32_t key)
 	struct selection *sel = &html->sel;
 	struct box *box;
 
+        struct dom_node *node = NULL;
+
+        box = html->layout;
+        if (box->node != NULL) {
+                node = box->node;
+                LOG("fire_dom_keyboard_event");
+                fire_dom_keyboard_event(corestring_dom_keypress, node,
+                                key, true, true);
+        }
+
 	switch (html->focus_type) {
 	case HTML_FOCUS_CONTENT:
 		box = html->focus_owner.content;

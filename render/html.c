@@ -98,6 +98,38 @@ bool fire_dom_event(dom_string *type, dom_node *target,
 	return result;
 }
 
+/*
+dom_keyboard_event *evt,
+               dom_string *type, bool bubble, bool cancelable,
+struct dom_abstract_view *view, dom_string *key_ident,
+dom_key_location key_loc, dom_string *modifier_list
+*/
+bool fire_dom_keyboard_event(dom_string *type, dom_node *target, uint32_t key,
+                   bool bubbles, bool cancelable)
+{
+
+       dom_exception exc;
+       dom_event *evt;
+       bool result;
+
+       exc = dom_event_create(&evt);
+       if (exc != DOM_NO_ERR) return false;
+       exc = dom_event_init_with_key(evt, type, bubbles, cancelable, key);
+       if (exc != DOM_NO_ERR) {
+               dom_event_unref(evt);
+               return false;
+       }
+       LOG("Dispatching '%*s' against %p",
+           dom_string_length(type), dom_string_data(type), target);
+       exc = dom_event_target_dispatch_event(target, evt, &result);
+       if (exc != DOM_NO_ERR) {
+               result = false;
+       }
+       dom_event_unref(evt);
+       return result;
+
+}
+
 /**
  * Perform post-box-creation conversion of a document
  *

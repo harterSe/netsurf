@@ -70,6 +70,18 @@ getter Event::currentTarget ()
 	return 1;
 %}
 
+getter Event::charCode ()
+%{
+	unsigned int charCode;
+	dom_exception exc;
+
+	exc = dom_event_get_charCode(priv->evt, &charCode);
+	if (exc != DOM_NO_ERR) return 0;
+
+	duk_push_uint(ctx, charCode);
+	return 1;
+%}
+
 getter Event::eventPhase ()
 %{
 	dom_exception exc;

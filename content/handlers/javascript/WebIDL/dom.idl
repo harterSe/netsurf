@@ -21,13 +21,14 @@ interface Event {
 
   readonly attribute boolean bubbles;
   readonly attribute boolean cancelable;
+  readonly attribute int charCode;
   void preventDefault();
   readonly attribute boolean defaultPrevented;
 
   [Unforgeable] readonly attribute boolean isTrusted;
   readonly attribute DOMTimeStamp timeStamp;
 
-  void initEvent(DOMString type, boolean bubbles, boolean cancelable);
+  void initEvent(DOMString type, boolean bubbles, boolean cancelable, int charCode);
 };
 
 dictionary EventInit {

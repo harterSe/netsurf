@@ -369,6 +369,10 @@ nserror html_object_abort_objects(html_content *html);
 bool fire_dom_event(dom_string *type, dom_node *target,
 		    bool bubbles, bool cancelable);
 
+bool fire_dom_keyboard_event(dom_string *type, dom_node *target, uint32_t key,
+                    bool bubbles, bool cancelable);
+
+
 /* Useful dom_string pointers */
 struct dom_string;
 

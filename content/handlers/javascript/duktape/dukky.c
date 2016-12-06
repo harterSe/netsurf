@@ -810,6 +810,7 @@ static void dukky_generic_event_handler(dom_event *evt, void *pw)
 	dom_exception exc;
 	dom_event_target *targ;
 	dom_event_flow_phase phase;
+	unsigned int charCode;
 
 	/* Retrieve the JS context from the Duktape context */
 	duk_get_memory_functions(ctx, &funcs);
@@ -833,6 +834,13 @@ static void dukky_generic_event_handler(dom_event *evt, void *pw)
 	    phase == DOM_AT_TARGET ? "at-target" :
 	    phase == DOM_BUBBLING_PHASE ? "bubbling" :
 	    "unknown", (int)phase);
+
+        exc = dom_event_get_charCode(evt, &charCode);
+        if (exc != DOM_NO_ERR) {
+            LOG("Unable to get charCode");
+            return;
+        }
+        LOG("charCode %d", charCode);
 
 	exc = dom_event_get_current_target(evt, &targ);
 	if (exc != DOM_NO_ERR) {
