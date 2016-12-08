@@ -33,10 +33,10 @@ LDFLAGS += -Wl,--whole-archive
 $(eval $(call pkg_config_find_and_add,libnsfb,libnsfb))
 LDFLAGS += -Wl,--no-whole-archive
 
-# freetype is optional but does not use pkg-config
+# freetype is optional
 ifeq ($(NETSURF_FB_FONTLIB),freetype)
-  CFLAGS += -DFB_USE_FREETYPE $(shell freetype-config --cflags)
-  LDFLAGS += $(shell freetype-config --libs)
+  CFLAGS += -DFB_USE_FREETYPE $(shell pkg-config --cflags-only-I freetype2)
+  LDFLAGS += $(shell pkg-config --libs freetype2)
 endif
 
 
