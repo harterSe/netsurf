@@ -29,6 +29,7 @@
 #include <stdarg.h>
 #include <libwapcaplet/libwapcaplet.h>
 
+#include "netsurf/inttypes.h"
 #include "utils/nsurl.h"
 #include "utils/corestrings.h"
 #include "utils/log.h"
@@ -275,14 +276,16 @@ static bool fetch_resource_initialise(lwc_string *scheme)
 						     &e->data,
 						     &e->data_len);
 		if (res == NSERROR_OK) {
-			LOG("direct data for %s", fetch_resource_paths[i]);
+			NSLOG(netsurf, INFO, "direct data for %s",
+			      fetch_resource_paths[i]);
 			fetch_resource_path_count++;
 		} else {
 			e->redirect_url = guit->fetch->get_resource_url(fetch_resource_paths[i]);
 			if (e->redirect_url == NULL) {
 				lwc_string_unref(e->path);
 			} else {
-				LOG("redirect url for %s", fetch_resource_paths[i]);
+				NSLOG(netsurf, INFO, "redirect url for %s",
+				      fetch_resource_paths[i]);
 				fetch_resource_path_count++;
 			}
 		}

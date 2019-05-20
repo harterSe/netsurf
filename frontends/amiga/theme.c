@@ -47,13 +47,15 @@
 #include "amiga/gui.h"
 #include "amiga/drag.h"
 #include "amiga/bitmap.h"
+#include "amiga/plotters.h"
 #include "amiga/schedule.h"
 #include "amiga/theme.h"
 #include "amiga/misc.h"
 
 static struct BitMap *throbber = NULL;
 static struct bitmap *throbber_nsbm = NULL;
-static int throbber_frames, throbber_update_interval;
+static int throbber_frames = 1;
+static int throbber_update_interval;
 static Object *mouseptrobj[AMI_LASTPOINTER+1];
 static struct BitMap *mouseptrbm[AMI_LASTPOINTER+1];
 
@@ -175,11 +177,13 @@ void ami_theme_throbber_setup(void)
 
 	ami_get_theme_filename(throbberfile,"theme_throbber",false);
 	throbber_frames=atoi(messages_get("theme_throbber_frames"));
+	if(throbber_frames == 0) throbber_frames = 1;
 	throbber_update_interval = atoi(messages_get("theme_throbber_delay"));
 	if(throbber_update_interval == 0) throbber_update_interval = 250;
 
 	bm = ami_bitmap_from_datatype(throbberfile);
-	throbber = ami_bitmap_get_native(bm, bitmap_get_width(bm), bitmap_get_height(bm), NULL);
+	throbber = ami_bitmap_get_native(bm, bitmap_get_width(bm), bitmap_get_height(bm),
+		ami_plot_screen_is_palettemapped(), NULL);
 
 	throbber_nsbm = bm;
 }
@@ -363,13 +367,13 @@ void ami_init_mouse_pointers(void)
 			if((ptrfile = Open(ptrfname,MODE_OLDFILE)))
 			{
 				int mx,my;
-				UBYTE *pprefsbuf = AllocVecTagList(1061, NULL);
-				Read(ptrfile,pprefsbuf,1061);
+				UBYTE *pprefsbuf = malloc(1061);
+				Read(ptrfile, pprefsbuf, 1061);
 
-				mouseptrbm[i]=AllocVecTagList(sizeof(struct BitMap), NULL);
-				InitBitMap(mouseptrbm[i],2,32,32);
-				mouseptrbm[i]->Planes[0] = AllocRaster(32,32);
-				mouseptrbm[i]->Planes[1] = AllocRaster(32,32);
+				mouseptrbm[i] = malloc(sizeof(struct BitMap));
+				InitBitMap(mouseptrbm[i], 2, 32, 32);
+				mouseptrbm[i]->Planes[0] = AllocRaster(32, 32);
+				mouseptrbm[i]->Planes[1] = AllocRaster(32, 32);
 				mouseptr.BitMap = mouseptrbm[i];
 
 				for(my=0;my<32;my++)
@@ -393,7 +397,7 @@ void ami_init_mouse_pointers(void)
 					POINTERA_YResolution,POINTERYRESN_SCREENRESASPECT,
 					TAG_DONE);
 
-				FreeVec(pprefsbuf);
+				free(pprefsbuf);
 				Close(ptrfile);
 			}
 
@@ -414,7 +418,7 @@ void ami_mouse_pointers_free(void)
 		{
 			FreeRaster(mouseptrbm[i]->Planes[0],32,32);
 			FreeRaster(mouseptrbm[i]->Planes[1],32,32);
-			FreeVec(mouseptrbm[i]);
+			free(mouseptrbm[i]);
 		}
 	}
 }

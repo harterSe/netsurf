@@ -183,18 +183,19 @@ bool artworks_convert(struct content *c)
 	xos_read_var_val_size("Alias$LoadArtWorksModules", 0, os_VARTYPE_STRING,
 				&used, NULL, NULL);
 	if (used >= 0) {
-		LOG("Alias$LoadArtWorksModules not defined");
+		NSLOG(netsurf, INFO, "Alias$LoadArtWorksModules not defined");
 		msg_data.error = messages_get("AWNotSeen");
-		content_broadcast(c, CONTENT_MSG_ERROR, msg_data);
+		content_broadcast(c, CONTENT_MSG_ERROR, &msg_data);
 		return false;
 	}
 
 	/* load the modules, or do nothing if they're already loaded */
 	error = xos_cli("LoadArtWorksModules");
 	if (error) {
-		LOG("xos_cli: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xos_cli: 0x%x: %s", error->errnum,
+		      error->errmess);
 		msg_data.error = error->errmess;
-		content_broadcast(c, CONTENT_MSG_ERROR, msg_data);
+		content_broadcast(c, CONTENT_MSG_ERROR, &msg_data);
 		return false;
 	}
 
@@ -202,9 +203,10 @@ bool artworks_convert(struct content *c)
 	error = (os_error*)_swix(AWRender_FileInitAddress, _OUT(0) | _OUT(1),
 				&init_routine, &init_workspace);
 	if (error) {
-		LOG("AWRender_FileInitAddress: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "AWRender_FileInitAddress: 0x%x: %s",
+		      error->errnum, error->errmess);
 		msg_data.error = error->errmess;
-		content_broadcast(c, CONTENT_MSG_ERROR, msg_data);
+		content_broadcast(c, CONTENT_MSG_ERROR, &msg_data);
 		return false;
 	}
 
@@ -212,9 +214,10 @@ bool artworks_convert(struct content *c)
 				&aw->render_routine,
 				&aw->render_workspace);
 	if (error) {
-		LOG("AWRender_RenderAddress: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "AWRender_RenderAddress: 0x%x: %s",
+		      error->errnum, error->errmess);
 		msg_data.error = error->errmess;
-		content_broadcast(c, CONTENT_MSG_ERROR, msg_data);
+		content_broadcast(c, CONTENT_MSG_ERROR, &msg_data);
 		return false;
 	}
 
@@ -224,9 +227,10 @@ bool artworks_convert(struct content *c)
 	error = awrender_init(&source_data, &source_size,
 			init_routine, init_workspace);
 	if (error) {
-		LOG("awrender_init: 0x%x : %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "awrender_init: 0x%x : %s",
+		      error->errnum, error->errmess);
 		msg_data.error = error->errmess;
-		content_broadcast(c, CONTENT_MSG_ERROR, msg_data);
+		content_broadcast(c, CONTENT_MSG_ERROR, &msg_data);
 		return false;
 	}
 
@@ -239,13 +243,15 @@ bool artworks_convert(struct content *c)
 			&aw->y1);
 
 	if (error) {
-		LOG("AWRender_DocBounds: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "AWRender_DocBounds: 0x%x: %s",
+		      error->errnum, error->errmess);
 		msg_data.error = error->errmess;
-		content_broadcast(c, CONTENT_MSG_ERROR, msg_data);
+		content_broadcast(c, CONTENT_MSG_ERROR, &msg_data);
 		return false;
 	}
 
-	LOG("bounding box: %d,%d,%d,%d", aw->x0, aw->y0, aw->x1, aw->y1);
+	NSLOG(netsurf, INFO, "bounding box: %d,%d,%d,%d", aw->x0, aw->y0,
+	      aw->x1, aw->y1);
 
 	/* create the resizable workspace required by the
 		ArtWorksRenderer rendering routine */
@@ -253,9 +259,10 @@ bool artworks_convert(struct content *c)
 	aw->size = INITIAL_BLOCK_SIZE;
 	aw->block = malloc(INITIAL_BLOCK_SIZE);
 	if (!aw->block) {
-		LOG("failed to create block for ArtworksRenderer");
+		NSLOG(netsurf, INFO,
+		      "failed to create block for ArtworksRenderer");
 		msg_data.error = messages_get("NoMemory");
-		content_broadcast(c, CONTENT_MSG_ERROR, msg_data);
+		content_broadcast(c, CONTENT_MSG_ERROR, &msg_data);
 		return false;
 	}
 
@@ -317,7 +324,7 @@ bool artworks_redraw(struct content *c, struct content_redraw_data *data,
 	int clip_x1 = clip->x1;
 	int clip_y1 = clip->y1;
 
-	if (ctx->plot->flush && !ctx->plot->flush())
+	if (ctx->plot->flush && (ctx->plot->flush(ctx) != NSERROR_OK))
 		return false;
 
 	/* pick up render addresses again in case they've changed
@@ -368,13 +375,15 @@ bool artworks_redraw(struct content *c, struct content_redraw_data *data,
 
 	error = xos_read_vdu_variables(PTR_OS_VDU_VAR_LIST(&vars), vals);
 	if (error) {
-		LOG("xos_read_vdu_variables: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xos_read_vdu_variables: 0x%x: %s",
+		      error->errnum, error->errmess);
 		return false;
 	}
 
 	error = xwimp_read_palette((os_palette*)&vals[3]);
 	if (error) {
-		LOG("xwimp_read_palette: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_read_palette: 0x%x: %s",
+		      error->errnum, error->errmess);
 		return false;
 	}
 
@@ -393,7 +402,8 @@ bool artworks_redraw(struct content *c, struct content_redraw_data *data,
 			aw->render_workspace);
 
 	if (error) {
-		LOG("awrender_render: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "awrender_render: 0x%x: %s",
+		      error->errnum, error->errmess);
 		return false;
 	}
 

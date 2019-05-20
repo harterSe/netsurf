@@ -68,8 +68,7 @@ static void *nsbmp_bitmap_create(int width, int height, unsigned int bmp_state)
 }
 
 static nserror nsbmp_create_bmp_data(nsbmp_content *bmp)
-{	
-	union content_msg_data msg_data;
+{
 	bmp_bitmap_callback_vt bmp_bitmap_callbacks = {
 		.bitmap_create = nsbmp_bitmap_create,
 		.bitmap_destroy = guit->bitmap->destroy,
@@ -79,8 +78,7 @@ static nserror nsbmp_create_bmp_data(nsbmp_content *bmp)
 
 	bmp->bmp = calloc(sizeof(struct bmp_image), 1);
 	if (bmp->bmp == NULL) {
-		msg_data.error = messages_get("NoMemory");
-		content_broadcast(&bmp->base, CONTENT_MSG_ERROR, msg_data);
+		content_broadcast_errorcode(&bmp->base, NSERROR_NOMEM);
 		return NSERROR_NOMEM;
 	}
 
@@ -123,7 +121,6 @@ static bool nsbmp_convert(struct content *c)
 {
 	nsbmp_content *bmp = (nsbmp_content *) c;
 	bmp_result res;
-	union content_msg_data msg_data;
 	uint32_t swidth;
 	const char *data;
 	unsigned long size;
@@ -138,13 +135,11 @@ static bool nsbmp_convert(struct content *c)
 		case BMP_OK:
 			break;
 		case BMP_INSUFFICIENT_MEMORY:
-			msg_data.error = messages_get("NoMemory");
-			content_broadcast(c, CONTENT_MSG_ERROR, msg_data);
+			content_broadcast_errorcode(c, NSERROR_NOMEM);
 			return false;
 		case BMP_INSUFFICIENT_DATA:
 		case BMP_DATA_ERROR:
-			msg_data.error = messages_get("BadBMP");
-			content_broadcast(c, CONTENT_MSG_ERROR, msg_data);
+			content_broadcast_errorcode(c, NSERROR_BMP_ERROR);
 			return false;
 	}
 
@@ -199,8 +194,12 @@ static bool nsbmp_redraw(struct content *c, struct content_redraw_data *data,
 	if (data->repeat_y)
 		flags |= BITMAPF_REPEAT_Y;
 
-	return ctx->plot->bitmap(data->x, data->y, data->width, data->height,
-			bmp->bitmap, data->background_colour, flags);
+	return (ctx->plot->bitmap(ctx,
+				  bmp->bitmap,
+				  data->x, data->y,
+				  data->width, data->height,
+				  data->background_colour,
+				  flags) == NSERROR_OK);
 }
 
 

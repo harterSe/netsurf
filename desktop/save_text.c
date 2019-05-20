@@ -32,8 +32,8 @@
 #include "utils/utf8.h"
 #include "utils/utils.h"
 #include "netsurf/content.h"
-#include "render/box.h"
-#include "render/html.h"
+#include "html/box.h"
+#include "html/html_save.h"
 
 #include "netsurf/utf8.h"
 #include "desktop/gui_internal.h"
@@ -75,7 +75,8 @@ void save_as_text(struct hlcache_handle *c, char *path)
 	free(save.block);
 
 	if (ret != NSERROR_OK) {
-		LOG("failed to convert to local encoding, return %d", ret);
+		NSLOG(netsurf, INFO,
+		      "failed to convert to local encoding, return %d", ret);
 		return;
 	}
 
@@ -84,12 +85,13 @@ void save_as_text(struct hlcache_handle *c, char *path)
 		int res = fputs(result, out);
 
 		if (res < 0) {
-			LOG("Warning: write failed");
+			NSLOG(netsurf, INFO, "Warning: write failed");
 		}
 
 		res = fputs("\n", out);
 		if (res < 0) {
-			LOG("Warning: failed writing trailing newline");
+			NSLOG(netsurf, INFO,
+			      "Warning: failed writing trailing newline");
 		}
 
 		fclose(out);

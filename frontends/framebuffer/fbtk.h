@@ -19,13 +19,7 @@
 #ifndef NETSURF_FB_FBTK_H
 #define NETSURF_FB_FBTK_H
 
-#include "desktop/plot_style.h"
-
-#ifdef FBTK_LOGGING
-#define FBTK_LOG(x) LOG(x)
-#else
-#define FBTK_LOG(x)
-#endif
+#include "netsurf/types.h"
 
 #define FB_SCROLL_COLOUR 0xFFAAAAAA
 #define FB_FRAME_COLOUR 0xFFDDDDDD

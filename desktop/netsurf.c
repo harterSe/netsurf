@@ -25,12 +25,13 @@
 #include <stdlib.h>
 #include <libwapcaplet/libwapcaplet.h>
 
+#include "netsurf/inttypes.h"
 #include "utils/config.h"
 #include "utils/nsoption.h"
 #include "utils/corestrings.h"
 #include "utils/log.h"
+#include "utils/string.h"
 #include "utils/utf8.h"
-#include "utils/utils.h"
 #include "utils/messages.h"
 #include "content/content_factory.h"
 #include "content/fetchers.h"
@@ -41,8 +42,8 @@
 #include "image/image.h"
 #include "image/image_cache.h"
 #include "javascript/js.h"
-#include "render/html.h"
-#include "render/textplain.h"
+#include "html/html.h"
+#include "text/textplain.h"
 
 #include "netsurf/browser_window.h"
 #include "desktop/system_colour.h"
@@ -89,7 +90,204 @@
 
 static void netsurf_lwc_iterator(lwc_string *str, void *pw)
 {
-	LOG("[%3u] %.*s", str->refcnt, (int)lwc_string_length(str), lwc_string_data(str));
+	NSLOG(netsurf, INFO, "[%3u] %.*s", str->refcnt,
+	      (int)lwc_string_length(str), lwc_string_data(str));
+}
+
+/**
+ * Build a "username:password" from components.
+ *
+ * \param[in]  username      The username component.
+ * \param[in]  password      The password component.
+ * \param[out] userpass_out  Returns combined string on success.
+ *                           Owned by caller.
+ * \return NSERROR_OK, or appropriate error code.
+ */
+static nserror netsurf__build_userpass(
+		const char *username,
+		const char *password,
+		char **userpass_out)
+{
+	char *userpass;
+	size_t len;
+
+	len = strlen(username) + 1 + strlen(password) + 1;
+
+	userpass = malloc(len);
+	if (userpass == NULL) {
+		return NSERROR_NOMEM;
+	}
+
+	snprintf(userpass, len, "%s:%s", username, password);
+
+	*userpass_out = userpass;
+	return NSERROR_OK;
+}
+
+/**
+ * Unpack a "username:password" to components.
+ *
+ * \param[in]  userpass      The input string to split.
+ * \param[in]  username_out  Returns username on success.  Owned by caller.
+ * \param[out] password_out  Returns password on success.  Owned by caller.
+ * \return NSERROR_OK, or appropriate error code.
+ */
+static nserror netsurf__unpack_userpass(
+		const char *userpass,
+		char **username_out,
+		char **password_out)
+{
+	const char *tmp;
+	char *username;
+	char *password;
+	size_t len;
+
+	if (userpass == NULL) {
+		username = malloc(1);
+		password = malloc(1);
+		if (username == NULL || password == NULL) {
+			free(username);
+			free(password);
+			return NSERROR_NOMEM;
+		}
+		username[0] = '\0';
+		password[0] = '\0';
+
+		*username_out = username;
+		*password_out = password;
+		return NSERROR_OK;
+	}
+
+	tmp = strchr(userpass, ':');
+	if (tmp == NULL) {
+		return NSERROR_BAD_PARAMETER;
+	} else {
+		size_t len2;
+		len = tmp - userpass;
+		len2 = strlen(++tmp);
+
+		username = malloc(len + 1);
+		password = malloc(len2 + 1);
+		if (username == NULL || password == NULL) {
+			free(username);
+			free(password);
+			return NSERROR_NOMEM;
+		}
+		memcpy(username, userpass, len);
+		username[len] = '\0';
+		memcpy(password, tmp, len2 + 1);
+	}
+
+	*username_out = username;
+	*password_out = password;
+	return NSERROR_OK;
+}
+
+/**
+ * Contect for login callbacks to front ends.
+ */
+struct auth_data {
+	char *realm;
+	nsurl *url;
+
+	llcache_query_response cb;
+	void *pw;
+};
+
+/**
+ * Callback function passed to front ends for handling logins.
+ *
+ * \param[in]  username  The username.
+ * \param[in]  password  The password.
+ * \param[in]  cbpw      Our context.
+ * \return NSERROR_OK, or appropriate error code.
+ */
+static nserror netsurf__handle_login_response(
+		const char *username,
+		const char *password,
+		void *cbpw)
+{
+	struct auth_data *ctx = cbpw;
+	bool proceed = false;
+	nserror err;
+
+	if (username != NULL && password != NULL) {
+		char *userpass;
+
+		err = netsurf__build_userpass(username, password, &userpass);
+		if (err != NSERROR_OK) {
+			return err;
+		}
+
+		urldb_set_auth_details(ctx->url, ctx->realm, userpass);
+		free(userpass);
+		proceed = true;
+	}
+
+	err = ctx->cb(proceed, ctx->pw);
+	nsurl_unref(ctx->url);
+	free(ctx->realm);
+	free(ctx);
+	return err;
+}
+
+/**
+ * Helper for getting front end to handle logins.
+ *
+ * \param[in] query  Query descriptor
+ * \param[in] pw     Private data
+ * \param[in] cb     Continuation callback
+ * \param[in] cbpw   Private data for continuation
+ * \return NSERROR_OK, or appropriate error code.
+ */
+static nserror netsurf__handle_login(const llcache_query *query,
+		void *pw, llcache_query_response cb, void *cbpw)
+{
+	struct auth_data *ctx;
+	char *username;
+	char *password;
+	nserror err;
+
+	NSLOG(llcache, INFO, "HTTP Auth for: %s: %s",
+			query->data.auth.realm, nsurl_access(query->url));
+
+	ctx = malloc(sizeof(*ctx));
+	if (ctx == NULL) {
+		return NSERROR_NOMEM;
+	}
+
+	ctx->realm = strdup(query->data.auth.realm);
+	if (ctx->realm == NULL) {
+		free(ctx);
+		return NSERROR_NOMEM;
+	}
+	ctx->url = nsurl_ref(query->url);
+	ctx->cb = cb;
+	ctx->pw = cbpw;
+
+	err = netsurf__unpack_userpass(
+			urldb_get_auth_details(ctx->url, ctx->realm),
+			&username, &password);
+	if (err != NSERROR_OK) {
+		nsurl_unref(ctx->url);
+		free(ctx->realm);
+		free(ctx);
+		return err;
+	}
+
+	err = guit->misc->login(ctx->url, ctx->realm, username, password,
+			netsurf__handle_login_response, ctx);
+	free(username);
+	free(password);
+	if (err != NSERROR_OK) {
+		ctx->cb(false, ctx->pw);
+		nsurl_unref(ctx->url);
+		free(ctx->realm);
+		free(ctx);
+		return err;
+	}
+
+	return NSERROR_OK;
 }
 
 /**
@@ -108,7 +306,7 @@ static nserror netsurf_llcache_query_handler(const llcache_query *query,
 
 	switch (query->type) {
 	case LLCACHE_QUERY_AUTH:
-		guit->misc->login(query->url, query->data.auth.realm, cb, cbpw);
+		res = netsurf__handle_login(query, pw, cb, cbpw);
 		break;
 
 	case LLCACHE_QUERY_REDIRECT:
@@ -165,8 +363,9 @@ nserror netsurf_init(const char *store_path)
 
 	if (hlcache_parameters.llcache.limit < MINIMUM_MEMORY_CACHE_SIZE) {
 		hlcache_parameters.llcache.limit = MINIMUM_MEMORY_CACHE_SIZE;
-		LOG("Setting minimum memory cache size %" PRIsizet,
-		    hlcache_parameters.llcache.limit);
+		NSLOG(netsurf, INFO,
+		      "Setting minimum memory cache size %"PRIsizet,
+		      hlcache_parameters.llcache.limit);
 	} 
 
 	/* Set up the max attempts made to fetch a timing out resource */
@@ -212,10 +411,6 @@ nserror netsurf_init(const char *store_path)
 	if (ret != NSERROR_OK)
 		return ret;
 
-	ret = mimesniff_init();
-	if (ret != NSERROR_OK)
-		return ret;
-
 	setlocale(LC_ALL, "");
 
 	/* initialise the fetchers */
@@ -247,22 +442,20 @@ void netsurf_exit(void)
 {
 	hlcache_stop();
 	
-	LOG("Closing GUI");
+	NSLOG(netsurf, INFO, "Closing GUI");
 	guit->misc->quit();
 	
-	LOG("Finalising JavaScript");
+	NSLOG(netsurf, INFO, "Finalising JavaScript");
 	js_finalise();
 
-	LOG("Finalising Web Search");
+	NSLOG(netsurf, INFO, "Finalising Web Search");
 	search_web_finalise();
 
-	LOG("Finalising high-level cache");
+	NSLOG(netsurf, INFO, "Finalising high-level cache");
 	hlcache_finalise();
 
-	LOG("Closing fetches");
+	NSLOG(netsurf, INFO, "Closing fetches");
 	fetcher_quit();
-
-	mimesniff_fini();
 
 	/* dump any remaining cache entries */
 	image_cache_fini();
@@ -270,18 +463,21 @@ void netsurf_exit(void)
 	/* Clean up after content handlers */
 	content_factory_fini();
 
-	LOG("Closing utf8");
+	NSLOG(netsurf, INFO, "Closing utf8");
 	utf8_finalise();
 
-	LOG("Destroying URLdb");
+	NSLOG(netsurf, INFO, "Destroying URLdb");
 	urldb_destroy();
 
-	LOG("Destroying System colours");
+	NSLOG(netsurf, INFO, "Destroying System colours");
 	ns_system_colour_finalize();
 
+	NSLOG(netsurf, INFO, "Destroying Messages");
+	messages_destroy();
+
 	corestrings_fini();
-	LOG("Remaining lwc strings:");
+	NSLOG(netsurf, INFO, "Remaining lwc strings:");
 	lwc_iterate_strings(netsurf_lwc_iterator, NULL);
 
-	LOG("Exited successfully");
+	NSLOG(netsurf, INFO, "Exited successfully");
 }

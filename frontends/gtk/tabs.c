@@ -82,7 +82,7 @@ static GtkWidget *nsgtk_tab_label_setup(struct gui_window *window)
 	close = nsgtk_image_new_from_stock(NSGTK_STOCK_CLOSE,
 					   GTK_ICON_SIZE_MENU);
 	gtk_container_add(GTK_CONTAINER(button), close);
-	gtk_button_set_focus_on_click(GTK_BUTTON(button), FALSE);
+	nsgtk_button_set_focus_on_click(GTK_BUTTON(button), FALSE);
 	gtk_button_set_relief(GTK_BUTTON(button), GTK_RELIEF_NONE);
 	gtk_widget_set_tooltip_text(button, "Close this tab.");
 
@@ -147,18 +147,20 @@ nsgtk_tab_switch_page_after(GtkNotebook *notebook,
 		if ((srcpagenum != -1) &&
 		    (srcpagenum != (gint)selpagenum)) {
 			/* ensure the add tab is not actually selected */
-			LOG("src %d sel %d", srcpagenum, selpagenum);
+			NSLOG(netsurf, INFO, "src %d sel %d", srcpagenum,
+			      selpagenum);
 			srcpage = gtk_notebook_get_nth_page(notebook, srcpagenum);
 			gw = g_object_get_data(G_OBJECT(srcpage), "gui_window");
 			if ((gw != NULL) && (nsgtk_get_scaffold(gw) != NULL)) {
 				error = nsgtk_scaffolding_new_tab(gw);
 				if (error != NSERROR_OK) {
-					LOG("Failed to open new tab.");
+					NSLOG(netsurf, INFO,
+					      "Failed to open new tab.");
 				}
 			}
 		}
 	} else {
-		LOG("sel %d", selpagenum);
+		NSLOG(netsurf, INFO, "sel %d", selpagenum);
 		/* tab with page in it */
 		gw = g_object_get_data(G_OBJECT(selpage), "gui_window");
 		if (gw != NULL) {

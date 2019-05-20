@@ -43,8 +43,9 @@
 #include "netsurf/content.h"
 #include "content/hlcache.h"
 #include "css/css.h"
-#include "render/box.h"
-#include "render/html.h"
+#include "html/box.h"
+#include "html/html_save.h"
+#include "html/html.h"
 
 #include "netsurf/misc.h"
 #include "desktop/gui_internal.h"
@@ -168,7 +169,7 @@ static bool save_complete_save_buffer(save_complete_ctx *ctx,
 	fp = fopen(fname, "wb");
 	if (fp == NULL) {
 		free(fname);
-		LOG("fopen(): errno = %i", errno);
+		NSLOG(netsurf, INFO, "fopen(): errno = %i", errno);
 		guit->misc->warning("SaveError", strerror(errno));
 		return false;
 	}
@@ -195,10 +196,12 @@ static bool save_complete_save_buffer(save_complete_ctx *ctx,
  * \param osize updated with the size of the result.
  * \return converted source, or NULL on out of memory.
  */
-
-static char *save_complete_rewrite_stylesheet_urls(save_complete_ctx *ctx,
-		const char *source, unsigned long size, const nsurl *base,
-		unsigned long *osize)
+static char *
+save_complete_rewrite_stylesheet_urls(save_complete_ctx *ctx,
+				      const char *source,
+				      unsigned long size,
+				      const nsurl *base,
+				      unsigned long *osize)
 {
 	char *rewritten;
 	unsigned long offset = 0;
@@ -207,8 +210,9 @@ static char *save_complete_rewrite_stylesheet_urls(save_complete_ctx *ctx,
 
 	/* count number occurrences of @import to (over)estimate result size */
 	/* can't use strstr because source is not 0-terminated string */
-	for (offset = 0; SLEN("@import") < size &&
-			offset <= size - SLEN("@import"); offset++) {
+	for (offset = 0;
+	     (SLEN("@import") < size) && (offset <= (size - SLEN("@import")));
+	     offset++) {
 		if (source[offset] == '@' &&
 		    ascii_to_lower(source[offset + 1]) == 'i' &&
 		    ascii_to_lower(source[offset + 2]) == 'm' &&
@@ -637,9 +641,9 @@ static bool save_complete_handle_attr_value(save_complete_ctx *ctx,
 	 *
 	 * Attribute:      Elements:
 	 *
-	 * 1)   data         <object>
-	 * 2)   href         <a> <area> <link>
-	 * 3)   src          <script> <input> <frame> <iframe> <img>
+	 * 1)   data         object
+	 * 2)   href         a, area, link
+	 * 3)   src          script, input, frame, iframe, img
 	 * 4)   background   any (except those above)
 	 */
 	/* 1 */
@@ -1044,7 +1048,7 @@ static bool save_complete_node_handler(dom_node *node,
 	} else if (type == DOM_DOCUMENT_NODE) {
 		/* Do nothing */
 	} else {
-		LOG("Unhandled node type: %d", type);
+		NSLOG(netsurf, INFO, "Unhandled node type: %d", type);
 	}
 
 	return true;
@@ -1075,7 +1079,7 @@ static bool save_complete_save_html_document(save_complete_ctx *ctx,
 	fp = fopen(fname, "wb");
 	if (fp == NULL) {
 		free(fname);
-		LOG("fopen(): errno = %i", errno);
+		NSLOG(netsurf, INFO, "fopen(): errno = %i", errno);
 		guit->misc->warning("SaveError", strerror(errno));
 		return false;
 	}
@@ -1154,7 +1158,7 @@ static bool save_complete_inventory(save_complete_ctx *ctx)
 	fp = fopen(fname, "w");
 	free(fname);
 	if (fp == NULL) {
-		LOG("fopen(): errno = %i", errno);
+		NSLOG(netsurf, INFO, "fopen(): errno = %i", errno);
 		guit->misc->warning("SaveError", strerror(errno));
 		return false;
 	}
@@ -1182,7 +1186,8 @@ static nserror regcomp_wrapper(regex_t *preg, const char *regex, int cflags)
 	if (r) {
 		char errbuf[200];
 		regerror(r, preg, errbuf, sizeof errbuf);
-		LOG("Failed to compile regexp '%s': %s\n", regex, errbuf);
+		NSLOG(netsurf, INFO, "Failed to compile regexp '%s': %s\n",
+		      regex, errbuf);
 		return NSERROR_INIT_FAILED;
 	}
 	return NSERROR_OK;

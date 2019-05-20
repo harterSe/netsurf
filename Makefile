@@ -44,7 +44,6 @@ HOST := $(shell uname -s)
 # TODO: Ideally, we want the equivalent of s/[^A-Za-z0-9]/_/g here
 HOST := $(subst .,_,$(subst -,_,$(subst /,_,$(HOST))))
 
-
 ifeq ($(HOST),)
   HOST := riscos
   $(warning Build platform determination failed but that's a known problem for RISC OS so we're assuming a native RISC OS build.)
@@ -74,7 +73,7 @@ ifeq ($(HOST),beos)
       TARGET := beos
     endif
     ifeq ($(TARGET),haiku)
-      TARGET := beos
+      override TARGET := beos
     endif
 endif
 
@@ -82,13 +81,6 @@ ifeq ($(HOST),AmigaOS)
   HOST := amiga
   ifeq ($(TARGET),)
     TARGET := amiga
-  endif
-endif
-
-ifeq ($(HOST),Darwin)
-  HOST := macosx
-  ifeq ($(TARGET),)
-    TARGET := cocoa
   endif
 endif
 
@@ -117,7 +109,7 @@ ifeq ($(TARGET),)
 endif
 
 # valid values for the TARGET
-VLDTARGET := riscos gtk gtk3 beos amiga amigaos3 framebuffer windows atari cocoa monkey
+VLDTARGET := riscos gtk gtk3 beos amiga amigaos3 framebuffer windows atari monkey
 
 # Check for valid TARGET
 ifeq ($(filter $(VLDTARGET),$(TARGET)),)
@@ -138,7 +130,7 @@ MESSAGES_FILTER=any
 # The languages in the fat messages to convert
 MESSAGES_LANGUAGES=de en fr it nl
 # The target directory for the split messages
-MESSAGES_TARGET=!NetSurf/Resources
+MESSAGES_TARGET=resources
 
 # Defaults for tools
 PERL=perl
@@ -256,9 +248,6 @@ else
           PKG_CONFIG := PKG_CONFIG_LIBDIR="$(GCCSDK_INSTALL_ENV)/lib/pkgconfig" pkg-config
         endif
       else
-        ifeq ($(TARGET),cocoa)
-          PKG_CONFIG := PKG_CONFIG_PATH="$(PKG_CONFIG_PATH):/usr/local/lib/pkgconfig" pkg-config
-        else
           ifeq ($(TARGET),atari)
             ifeq ($(HOST),atari)
               PKG_CONFIG := pkg-config
@@ -298,9 +287,12 @@ else
                   CC := $(wildcard $(GCCSDK_INSTALL_CROSSBIN)/*gcc)
                   CXX := $(wildcard $(GCCSDK_INSTALL_CROSSBIN)/*g++)
                 endif
+
               else
                 # All native targets
-                PKG_CONFIG := pkg-config
+
+                # use native package config
+		PKG_CONFIG := pkg-config
 
                 # gtk target processing
 	        ifeq ($(TARGET),gtk3)
@@ -321,7 +313,6 @@ else
               endif
             endif
           endif
-        endif
       endif
     endif
   endif
@@ -342,7 +333,7 @@ endif
 CC := $(CCACHE) $(CC)
 
 # Target paths
-OBJROOT = build-$(HOST)-$(TARGET)$(SUBTARGET)
+OBJROOT = build/$(HOST)-$(TARGET)$(SUBTARGET)
 DEPROOT := $(OBJROOT)/deps
 TOOLROOT := $(OBJROOT)/tools
 
@@ -514,8 +505,11 @@ CXXWARNFLAGS :=
 # C default warning flags
 CWARNFLAGS := -Wstrict-prototypes -Wmissing-prototypes -Wnested-externs
 
-# Pull in the configuration
+# Pull in the default configuration
 include Makefile.defaults
+
+# Pull in the user configuration
+-include Makefile.config
 
 # libraries enabled by feature switch without pkgconfig file 
 $(eval $(call feature_switch,JPEG,JPEG (libjpeg),-DWITH_JPEG,-ljpeg,-UWITH_JPEG,))
@@ -543,6 +537,7 @@ NETSURF_FEATURE_NSSVG_CFLAGS := -DWITH_NS_SVG
 NETSURF_FEATURE_OPENSSL_CFLAGS := -DWITH_OPENSSL
 NETSURF_FEATURE_ROSPRITE_CFLAGS := -DWITH_NSSPRITE
 NETSURF_FEATURE_NSPSL_CFLAGS := -DWITH_NSPSL
+NETSURF_FEATURE_NSLOG_CFLAGS := -DWITH_NSLOG
 
 # libcurl and openssl ordering matters as if libcurl requires ssl it
 #  needs to come first in link order to ensure its symbols can be
@@ -563,6 +558,7 @@ $(eval $(call pkg_config_find_and_add_enabled,GIF,libnsgif,GIF))
 $(eval $(call pkg_config_find_and_add_enabled,NSSVG,libsvgtiny,SVG))
 $(eval $(call pkg_config_find_and_add_enabled,ROSPRITE,librosprite,Sprite))
 $(eval $(call pkg_config_find_and_add_enabled,NSPSL,libnspsl,PSL))
+$(eval $(call pkg_config_find_and_add_enabled,NSLOG,libnslog,LOG))
 
 # List of directories in which headers are searched for
 INCLUDE_DIRS :=. include $(OBJROOT)
@@ -574,6 +570,36 @@ CXXFLAGS += -DNETSURF_UA_FORMAT_STRING=\"$(NETSURF_UA_FORMAT_STRING)\"
 # set the default homepage to use
 CFLAGS += -DNETSURF_HOMEPAGE=\"$(NETSURF_HOMEPAGE)\"
 CXXFLAGS += -DNETSURF_HOMEPAGE=\"$(NETSURF_HOMEPAGE)\"
+
+# set the logging level
+CFLAGS += -DNETSURF_LOG_LEVEL=$(NETSURF_LOG_LEVEL)
+CXXFLAGS += -DNETSURF_LOG_LEVEL=$(NETSURF_LOG_LEVEL)
+
+# If we're building the sanitize goal, override things
+ifneq ($(filter-out sanitize,$(MAKECMDGOALS)),$(MAKECMDGOALS))
+override NETSURF_USE_SANITIZER := YES
+override NETSURF_RECOVER_SANITIZERS := NO
+endif
+
+# If we're going to use the sanitizer set it up
+ifeq ($(NETSURF_USE_SANITIZER),YES)
+SAN_FLAGS := -fsanitize=address -fsanitize=undefined
+ifeq ($(NETSURF_RECOVER_SANITIZERS),NO)
+SAN_FLAGS += -fno-sanitize-recover
+endif
+else
+SAN_FLAGS :=
+endif
+CFLAGS += $(SAN_FLAGS)
+CXXFLAGS += $(SAN_FLAGS)
+LDFLAGS += $(SAN_FLAGS)
+
+# and the logging filter
+CFLAGS += -DNETSURF_BUILTIN_LOG_FILTER=\"$(NETSURF_BUILTIN_LOG_FILTER)\"
+CXXFLAGS += -DNETSURF_BUILTIN_LOG_FILTER=\"$(NETSURF_BUILTIN_LOG_FILTER)\"
+# and the verbose logging filter
+CFLAGS += -DNETSURF_BUILTIN_VERBOSE_FILTER=\"$(NETSURF_BUILTIN_VERBOSE_FILTER)\"
+CXXFLAGS += -DNETSURF_BUILTIN_VERBOSE_FILTER=\"$(NETSURF_BUILTIN_VERBOSE_FILTER)\"
 
 # ----------------------------------------------------------------------------
 # General make rules
@@ -610,21 +636,27 @@ include frontends/Makefile
 # Content sources
 include content/Makefile
 
-# render sources
-include render/Makefile
-
 # utility sources
 include utils/Makefile
 
 # http utility sources
 include utils/http/Makefile
 
+# nsurl utility sources
+include utils/nsurl/Makefile
+
 # Desktop sources
 include desktop/Makefile
 
 # S_COMMON are sources common to all builds
-S_COMMON := $(S_CONTENT) $(S_FETCHERS) $(S_RENDER) $(S_UTILS) $(S_HTTP) \
-	$(S_DESKTOP) $(S_JAVASCRIPT_BINDING)
+S_COMMON := \
+	$(S_CONTENT) \
+	$(S_FETCHERS) \
+	$(S_UTILS) \
+	$(S_HTTP) \
+	$(S_NSURL) \
+	$(S_DESKTOP) \
+	$(S_JAVASCRIPT_BINDING)
 
 
 # ----------------------------------------------------------------------------
@@ -634,16 +666,12 @@ S_COMMON := $(S_CONTENT) $(S_FETCHERS) $(S_RENDER) $(S_UTILS) $(S_HTTP) \
 # Message splitting rule generation macro
 # 1 = Language
 define split_messages
-.INTERMEDIATE:$$(MESSAGES_TARGET)/$(1)/Messages.tmp
 
-$$(MESSAGES_TARGET)/$(1)/Messages.tmp: resources/FatMessages
+$$(MESSAGES_TARGET)/$(1)/Messages: resources/FatMessages
 	$$(VQ)echo "MSGSPLIT: Language: $(1) Filter: $$(MESSAGES_FILTER)"
-	$$(Q)mkdir -p $$(MESSAGES_TARGET)/$(1)
-	$$(Q)$$(SPLIT_MESSAGES) -l $(1) -p $$(MESSAGES_FILTER) -f messages -o $$@ $$<
-
-$$(MESSAGES_TARGET)/$(1)/Messages: $$(MESSAGES_TARGET)/$(1)/Messages.tmp
-	$$(VQ)echo "COMPRESS: $$@"
-	$$(Q)gzip -9n < $$< > $$@
+	$$(Q)$$(MKDIR) -p $$(MESSAGES_TARGET)/$(1)
+	$$(Q)$$(RM) $$@
+	$$(Q)$$(SPLIT_MESSAGES) -l $(1) -p $$(MESSAGES_FILTER) -f messages -o $$@ -z $$<
 
 CLEAN_MESSAGES += $$(MESSAGES_TARGET)/$(1)/Messages
 MESSAGES += $$(MESSAGES_TARGET)/$(1)/Messages
@@ -735,7 +763,6 @@ DEPFILES :=
 # 3 = obj filename, no prefix
 define dependency_generate_c
 DEPFILES += $(2)
-$$(DEPROOT)/$(2): $$(DEPROOT)/created $(1) Makefile.config
 
 endef
 
@@ -744,7 +771,6 @@ endef
 # 3 = obj filename, no prefix
 define dependency_generate_s
 DEPFILES += $(2)
-$$(DEPROOT)/$(2): $$(DEPROOT)/created $(1)
 
 endef
 
@@ -754,7 +780,7 @@ endef
 ifeq ($(CC_MAJOR),2)
 # simpler deps tracking for gcc2...
 define compile_target_c
-$$(DEPROOT)/$(3) $$(OBJROOT)/$(2): $$(OBJROOT)/created
+$$(OBJROOT)/$(2): $(1) $$(OBJROOT)/created $$(DEPROOT)/created
 	$$(VQ)echo "     DEP: $(1)"
 	$$(Q)$$(RM) $$(DEPROOT)/$(3)
 	$$(Q)$$(CC) $$(IFLAGS) $$(CFLAGS) -MM  \
@@ -767,7 +793,7 @@ $$(DEPROOT)/$(3) $$(OBJROOT)/$(2): $$(OBJROOT)/created
 endef
 else
 define compile_target_c
-$$(DEPROOT)/$(3) $$(OBJROOT)/$(2): $$(OBJROOT)/created
+$$(OBJROOT)/$(2): $(1) $$(OBJROOT)/created $$(DEPROOT)/created
 	$$(VQ)echo " COMPILE: $(1)"
 	$$(Q)$$(RM) $$(DEPROOT)/$(3)
 	$$(Q)$$(RM) $$(OBJROOT)/$(2)
@@ -779,7 +805,7 @@ endef
 endif
 
 define compile_target_cpp
-$$(DEPROOT)/$(3) $$(OBJROOT)/$(2): $$(OBJROOT)/created
+$$(OBJROOT)/$(2): $(1) $$(OBJROOT)/created $$(DEPROOT)/created
 	$$(VQ)echo "     DEP: $(1)"
 	$$(Q)$$(RM) $$(DEPROOT)/$(3)
 	$$(Q)$$(CC) $$(IFLAGS) $$(CXXFLAGS) $$(COMMON_WARNFLAGS) $$(CXXWARNFLAGS) -MM  \
@@ -795,7 +821,7 @@ endef
 # 2 = obj filename, no prefix
 # 3 = dep filename, no prefix
 define compile_target_s
-$$(DEPROOT)/$(3) $$(OBJROOT)/$(2): $$(OBJROOT)/created
+$$(OBJROOT)/$(2): $(1) $$(OBJROOT)/created $$(DEPROOT)/created
 	$$(VQ)echo "ASSEMBLE: $(1)"
 	$$(Q)$$(RM) $$(DEPROOT)/$(3)
 	$$(Q)$$(RM) $$(OBJROOT)/$(2)
@@ -878,7 +904,7 @@ install: all-program install-$(TARGET)
 
 .PHONY: docs
 
-docs: Docs/Doxyfile
+docs: docs/Doxyfile
 	doxygen $<
 
 

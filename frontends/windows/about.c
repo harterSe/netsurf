@@ -28,7 +28,6 @@
 #include <windows.h>
 
 #include "utils/log.h"
-#include "utils/utils.h"
 #include "utils/messages.h"
 #include "desktop/version.h"
 
@@ -53,7 +52,7 @@ static BOOL init_about_dialog(HWND hwnd)
 
 		hFont=CreateFont (26, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, "Arial");
 		if (hFont != NULL) {
-			LOG("Setting font object");
+			NSLOG(netsurf, INFO, "Setting font object");
 			SendMessage(dlg_itm, WM_SETFONT, (WPARAM)hFont, 0);
 		}
 
@@ -86,7 +85,7 @@ static BOOL destroy_about_dialog(HWND hwnd)
 	if (dlg_itm != NULL) {
 		hFont = (HFONT)SendMessage(dlg_itm, WM_GETFONT, 0, 0);
 		if (hFont != NULL) {
-			LOG("Destroyed font object");
+			NSLOG(netsurf, INFO, "Destroyed font object");
 			DeleteObject(hFont); 	
 		}
 	}
@@ -108,12 +107,12 @@ nsws_about_event_callback(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	case WM_COMMAND:
 		switch(LOWORD(wparam)) {
 		case IDOK:
-			LOG("OK clicked");
+			NSLOG(netsurf, INFO, "OK clicked");
 			EndDialog(hwnd, IDOK);
 			break;
 
 		case IDCANCEL:
-			LOG("Cancel clicked");
+			NSLOG(netsurf, INFO, "Cancel clicked");
 			EndDialog(hwnd, IDOK);
 			break;
 
@@ -140,9 +139,9 @@ nsws_about_event_callback(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	return FALSE;
 }
 
-void nsws_about_dialog_init(HINSTANCE hinst, HWND parent)
+void nsw32_about_dialog_init(HINSTANCE hinst, HWND parent)
 {
-	int ret = DialogBox(hinst, MAKEINTRESOURCE(IDD_DLG_ABOUT), parent,
+	int ret = DialogBox(hinst, MAKEINTRESOURCE(IDD_ABOUT), parent,
 			nsws_about_event_callback);
 	if (ret == -1) {
 		win32_warning(messages_get("NoMemory"), 0);

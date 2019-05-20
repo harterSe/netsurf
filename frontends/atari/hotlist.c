@@ -25,13 +25,12 @@
 
 #include "utils/log.h"
 #include "utils/messages.h"
-#include "utils/utils.h"
 #include "utils/nsoption.h"
 #include "utils/nsurl.h"
+#include "netsurf/inttypes.h"
 #include "netsurf/keypress.h"
 #include "content/content.h"
 #include "desktop/hotlist.h"
-#include "desktop/tree.h"
 
 #include "atari/gui.h"
 #include "atari/misc.h"
@@ -42,6 +41,8 @@
 #include "atari/res/netsurf.rsh"
 
 extern GRECT desk_area;
+
+const char *tree_hotlist_path;
 
 struct atari_hotlist hl;
 
@@ -71,14 +72,14 @@ static struct atari_treeview_callbacks atari_hotlist_treeview_callbacks = {
 static nserror atari_hotlist_init_phase2(struct core_window *cw,
 					 struct core_window_callback_table *cb_t)
 {
-	LOG("cw:%p", cw);
-	return(hotlist_init(cb_t, cw, hl.path));
+	NSLOG(netsurf, INFO, "cw:%p", cw);
+	return hotlist_manager_init(cb_t, cw);
 }
 
 static void atari_hotlist_finish(struct core_window *cw)
 {
-	LOG("cw:%p", cw);
-	hotlist_fini(hl.path);
+	NSLOG(netsurf, INFO, "cw:%p", cw);
+	hotlist_fini();
 }
 
 static void atari_hotlist_draw(struct core_window *cw, int x,
@@ -90,12 +91,12 @@ static void atari_hotlist_draw(struct core_window *cw, int x,
 
 static void atari_hotlist_keypress(struct core_window *cw, uint32_t ucs4)
 {
-	GUIWIN *gemtk_win;
-	GRECT area;
-	LOG("ucs4: %"PRIu32 , ucs4);
+	//GUIWIN *gemtk_win;
+	//GRECT area;
+	NSLOG(netsurf, INFO, "ucs4: %"PRIu32, ucs4);
 	hotlist_keypress(ucs4);
-	gemtk_win = atari_treeview_get_gemtk_window(cw);
-	atari_treeview_get_grect(cw, TREEVIEW_AREA_CONTENT, &area);
+	//gemtk_win = atari_treeview_get_gemtk_window(cw);
+	//atari_treeview_get_grect(cw, TREEVIEW_AREA_CONTENT, &area);
 	//gemtk_wm_exec_redraw(gemtk_win, &area);
 }
 
@@ -103,7 +104,7 @@ static void atari_hotlist_mouse_action(struct core_window *cw,
 				       browser_mouse_state mouse,
 				       int x, int y)
 {
-	LOG("x:  %d, y: %d\n", x, y);
+	NSLOG(netsurf, INFO, "x:  %d, y: %d\n", x, y);
 
 	hotlist_mouse_action(mouse, x, y);
 }
@@ -122,7 +123,7 @@ static short handle_event(GUIWIN *win, EVMULT_OUT *ev_out, short msg[8])
 	GRECT tb_area;
 	GUIWIN * gemtk_win;
 
-	LOG("gw:%p", win);
+	NSLOG(netsurf, INFO, "gw:%p", win);
 
 	tv = (struct atari_treeview_window*) gemtk_wm_get_user_data(win);
 	cw = (struct core_window *)tv;
@@ -131,7 +132,7 @@ static short handle_event(GUIWIN *win, EVMULT_OUT *ev_out, short msg[8])
 		switch (msg[0]) {
 
 		case WM_TOOLBAR:
-			LOG("WM_TOOLBAR");
+			NSLOG(netsurf, INFO, "WM_TOOLBAR");
 
 			toolbar = gemtk_obj_get_tree(TOOLBAR_HOTLIST);
 
@@ -197,7 +198,8 @@ void atari_hotlist_init(void)
 			strncpy( (char*)&hl.path, nsoption_charp(hotlist_file), PATH_MAX-1 );
 		}
 
-		LOG("Hotlist: %s", (char *)&hl.path);
+		NSLOG(netsurf, INFO, "Hotlist: %s", (char *)&hl.path);
+		hotlist_init(hl.path, hl.path);
 
 		if( hl.window == NULL ){
 			int flags = ATARI_TREEVIEW_WIDGETS;
@@ -222,7 +224,8 @@ void atari_hotlist_init(void)
 
 			if (hl.tv == NULL) {
 				/* handle it properly, clean up previous allocs */
-				LOG("Failed to allocate treeview");
+				NSLOG(netsurf, INFO,
+				      "Failed to allocate treeview");
 				return;
 			}
 
@@ -274,7 +277,7 @@ void atari_hotlist_destroy(void)
 		atari_treeview_delete(hl.tv);
 		hl.init = false;
 	}
-	LOG("done");
+	NSLOG(netsurf, INFO, "done");
 }
 
 void atari_hotlist_redraw(void)
@@ -297,7 +300,7 @@ void atari_hotlist_add_page( const char * url, const char * title )
 		return;
 
 	if (hotlist_has_url(nsurl)) {
-		LOG("URL already added as Bookmark");
+		NSLOG(netsurf, INFO, "URL already added as Bookmark");
 		nsurl_unref(nsurl);
 		return;
 	}

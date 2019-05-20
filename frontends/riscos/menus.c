@@ -51,7 +51,6 @@
 #include "riscos/save.h"
 #include "riscos/tinct.h"
 #include "riscos/toolbar.h"
-#include "riscos/treeview.h"
 #include "riscos/url_suggest.h"
 #include "riscos/wimp.h"
 #include "riscos/wimp_event.h"
@@ -233,7 +232,8 @@ void ro_gui_menu_create(wimp_menu *menu, int x, int y, wimp_w w)
 	current_menu_open = true;
 	error = xwimp_create_menu(menu, x - 64, y);
 	if (error) {
-		LOG("xwimp_create_menu: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_create_menu: 0x%x: %s",
+		      error->errnum, error->errmess);
 		ro_warn_user("MenuError", error->errmess);
 		ro_gui_menu_closed();
 	}
@@ -259,14 +259,16 @@ void ro_gui_popup_menu(wimp_menu *menu, wimp_w w, wimp_i i)
 	icon_state.i = i;
 	error = xwimp_get_window_state(&state);
 	if (error) {
-		LOG("xwimp_get_window_state: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_get_window_state: 0x%x: %s",
+		      error->errnum, error->errmess);
 		ro_warn_user("MenuError", error->errmess);
 		return;
 	}
 
 	error = xwimp_get_icon_state(&icon_state);
 	if (error) {
-		LOG("xwimp_get_icon_state: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_get_icon_state: 0x%x: %s",
+		      error->errnum, error->errmess);
 		ro_warn_user("MenuError", error->errmess);
 		return;
 	}
@@ -292,7 +294,8 @@ void ro_gui_menu_destroy(void)
 
 	error = xwimp_create_menu(wimp_CLOSE_MENU, 0, 0);
 	if (error) {
-		LOG("xwimp_create_menu: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_create_menu: 0x%x: %s",
+		      error->errnum, error->errmess);
 		ro_warn_user("MenuError", error->errmess);
 	}
 
@@ -355,7 +358,8 @@ void ro_gui_menu_selection(wimp_selection *selection)
 	/* re-open the menu for Adjust clicks */
 	error = xwimp_get_pointer_info(&pointer);
 	if (error) {
-		LOG("xwimp_get_pointer_info: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_get_pointer_info: 0x%x: %s",
+		      error->errnum, error->errmess);
 		ro_warn_user("WimpError", error->errmess);
 		ro_gui_menu_closed();
 		return;
@@ -421,7 +425,8 @@ void ro_gui_menu_warning(wimp_message_menu_warning *warning)
 	error = xwimp_create_sub_menu(menu_entry->sub_menu,
 			warning->pos.x, warning->pos.y);
 	if (error) {
-		LOG("xwimp_create_sub_menu: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_create_sub_menu: 0x%x: %s",
+		      error->errnum, error->errmess);
 		ro_warn_user("MenuError", error->errmess);
 	}
 }
@@ -486,7 +491,8 @@ void ro_gui_menu_refresh(wimp_menu *menu)
 		os_error *error;
 		error = xwimp_create_menu(current_menu, 0, 0);
 		if (error) {
-			LOG("xwimp_create_menu: 0x%x: %s", error->errnum, error->errmess);
+			NSLOG(netsurf, INFO, "xwimp_create_menu: 0x%x: %s",
+			      error->errnum, error->errmess);
 			ro_warn_user("MenuError", error->errmess);
 		}
 	}
@@ -852,7 +858,8 @@ int ro_gui_menu_get_checksum(void)
 	error = xwimp_get_menu_state((wimp_menu_state_flags)0,
 			&menu_tree, 0, 0);
 	if (error) {
-		LOG("xwimp_get_menu_state: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_get_menu_state: 0x%x: %s",
+		      error->errnum, error->errmess);
 		ro_warn_user("MenuError", error->errmess);
 		return 0;
 	}
@@ -895,7 +902,8 @@ bool ro_gui_menu_translate(struct menu_definition *menu)
 	/* read current alphabet */
 	error = xosbyte1(osbyte_ALPHABET_NUMBER, 127, 0, &alphabet);
 	if (error) {
-		LOG("failed reading alphabet: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "failed reading alphabet: 0x%x: %s",
+		      error->errnum, error->errmess);
 		/* assume Latin1 */
 		alphabet = territory_ALPHABET_LATIN1;
 	}
@@ -910,7 +918,7 @@ bool ro_gui_menu_translate(struct menu_definition *menu)
 			0, &translated);
 	if (err != NSERROR_OK) {
 		assert(err != NSERROR_BAD_ENCODING);
-		LOG("utf8_to_enc failed");
+		NSLOG(netsurf, INFO, "utf8_to_enc failed");
 		return false;
 	}
 
@@ -927,7 +935,7 @@ bool ro_gui_menu_translate(struct menu_definition *menu)
 				0, &translated);
 		if (err != NSERROR_OK) {
 			assert(err != NSERROR_BAD_ENCODING);
-			LOG("utf8_to_enc failed");
+			NSLOG(netsurf, INFO, "utf8_to_enc failed");
 			return false;
 		}
 

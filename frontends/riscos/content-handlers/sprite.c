@@ -126,7 +126,7 @@ bool sprite_convert(struct content *c)
 	/* check for bad data */
 	if ((int)source_size + 4 != area->used) {
 		msg_data.error = messages_get("BadSprite");
-		content_broadcast(c, CONTENT_MSG_ERROR, msg_data);
+		content_broadcast(c, CONTENT_MSG_ERROR, &msg_data);
 		return false;
 	}
 
@@ -135,9 +135,12 @@ bool sprite_convert(struct content *c)
 			(osspriteop_id) ((char *) area + area->first),
 			&w, &h, NULL, NULL);
 	if (error) {
-		LOG("xosspriteop_read_sprite_info: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO,
+		      "xosspriteop_read_sprite_info: 0x%x: %s",
+		      error->errnum,
+		      error->errmess);
 		msg_data.error = error->errmess;
-		content_broadcast(c, CONTENT_MSG_ERROR, msg_data);
+		content_broadcast(c, CONTENT_MSG_ERROR, &msg_data);
 		return false;
 	}
 
@@ -180,7 +183,7 @@ bool sprite_redraw(struct content *c, struct content_redraw_data *data,
 {
 	sprite_content *sprite = (sprite_content *) c;
 
-	if (ctx->plot->flush && !ctx->plot->flush())
+	if (ctx->plot->flush && (ctx->plot->flush(ctx) != NSERROR_OK))
 		return false;
 
 	return image_redraw(sprite->data,

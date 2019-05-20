@@ -70,10 +70,10 @@
 #include "amiga/font.h"
 #include "amiga/font_bullet.h"
 #include "amiga/gui.h"
+#include "amiga/gui_menu.h"
 #include "amiga/gui_options.h"
 #include "amiga/help.h"
 #include "amiga/libs.h"
-#include "amiga/misc.h"
 #include "amiga/nsoption.h"
 #include "amiga/object.h"
 #include "amiga/selectmenu.h"
@@ -221,7 +221,7 @@ enum {
 };
 
 struct ami_gui_opts_window {
-	struct nsObject *node;
+	struct ami_generic_window w;
 	struct Window *win;
 	Object *objects[GID_OPTS_LAST];
 #ifndef __amigaos4__
@@ -232,6 +232,14 @@ struct ami_gui_opts_window {
 	struct List ditheroptslist;
 	struct List fontoptslist;
 #endif
+};
+
+static BOOL ami_gui_opts_event(void *w);
+static void ami_gui_opts_close(void *w);
+
+static const struct ami_win_event_table ami_guiopts_table = {
+	ami_gui_opts_event,
+	ami_gui_opts_close,
 };
 
 static struct ami_gui_opts_window *gow = NULL;
@@ -262,9 +270,8 @@ static void ami_gui_opts_array_to_list(struct List *list, const char *array[], i
 				node = AllocChooserNode(CNA_Text, array[i], TAG_DONE);
 			break;
 			case NSA_LIST_RADIO:
-				/* Note: RBNA_Labels is RBNA_Label in OS4
-				 * Also note: These labels don't work (FIXME) */
-				node = AllocRadioButtonNode(RBNA_Labels, array[i], TAG_DONE);
+				/* Note: RBNA_Labels is RBNA_Label in OS4 */
+				node = AllocRadioButtonNode(0, RBNA_Labels, array[i], TAG_DONE);
 			break;
 			default:
 			break;
@@ -636,7 +643,7 @@ void ami_gui_opts_open(void)
 
 	if(!gow)
 	{
-		gow = ami_misc_allocvec_clear(sizeof(struct ami_gui_opts_window), 0);
+		gow = calloc(1, sizeof(struct ami_gui_opts_window));
 		if(gow == NULL) return;
 
 		ami_gui_opts_setup(gow);
@@ -1099,8 +1106,8 @@ void ami_gui_opts_open(void)
 											GA_ID, GID_OPTS_DPI_Y,
 											GA_RelVerify, TRUE,
 											INTEGER_Number, nsoption_int(screen_ydpi),
-											INTEGER_Minimum, 60,
-											INTEGER_Maximum, 150,
+											INTEGER_Minimum, 20,
+											INTEGER_Maximum, 200,
 											INTEGER_Arrows, TRUE,
 											GA_Disabled, nsoption_bool(bitmap_fonts),
 										IntegerEnd,
@@ -1668,8 +1675,7 @@ void ami_gui_opts_open(void)
 		EndWindow;
 
 		gow->win = (struct Window *)RA_OpenWindow(gow->objects[OID_MAIN]);
-		gow->node = AddObject(window_list,AMINS_GUIOPTSWINDOW);
-		gow->node->objstruct = gow;
+		ami_gui_win_list_add(gow, AMINS_GUIOPTSWINDOW, &ami_guiopts_table);
 	}
 	ami_utf8_free(homepage_url_lc);
 }
@@ -1720,7 +1726,9 @@ static void ami_gui_opts_use(bool save)
 	} else {
 		nsoption_set_bool(enable_javascript, false);
 	}
-	
+
+	ami_gui_menu_set_checked(NULL, M_JS, nsoption_bool(enable_javascript));
+
 	GetAttr(GA_Selected,gow->objects[GID_OPTS_DONOTTRACK],(ULONG *)&data);
 	if (data) {
 		nsoption_set_bool(do_not_track, true);
@@ -1739,7 +1747,7 @@ static void ami_gui_opts_use(bool save)
 	switch(data)
 	{
 		case 0:
-			nsoption_set_charp(pubscreen_name, strdup("\0"));
+			nsoption_set_charp(pubscreen_name, NULL);
 			break;
 
 		case 1:
@@ -1889,6 +1897,15 @@ static void ami_gui_opts_use(bool save)
 #ifndef __amigaos4__
 	GetAttr(GA_Selected, gow->objects[GID_OPTS_FONT_BITMAP], (ULONG *)&data);
 	ami_font_fini();
+
+	if((nsoption_bool(bitmap_fonts) == true) && (data == false)) {
+		nsoption_set_charp(font_sans, (char *)strdup("CGTriumvirate"));
+		nsoption_set_charp(font_serif, (char *)strdup("CGTimes"));
+		nsoption_set_charp(font_mono, (char *)strdup("LetterGothic"));
+		nsoption_set_charp(font_cursive, (char *)strdup("CGTriumvirate"));
+		nsoption_set_charp(font_fantasy, (char *)strdup("CGTimes"));
+	}
+
 	if(data) {
 		nsoption_set_bool(bitmap_fonts, true);
 	} else { 
@@ -2060,19 +2077,19 @@ static void ami_gui_opts_use(bool save)
 		ami_font_savescanner(); /* just in case it has changed and been used only */
 	}
 
-	ami_menu_set_check_toggled();
+	ami_gui_menu_set_check_toggled();
 	ami_update_pointer(gow->win, GUI_POINTER_DEFAULT);
 }
 
-void ami_gui_opts_close(void)
+static void ami_gui_opts_close(void *w)
 {
 	DisposeObject(gow->objects[OID_MAIN]);
 	ami_gui_opts_free(gow);
-	DelObject(gow->node);
+	ami_gui_win_list_remove(gow);
 	gow = NULL;
 }
 
-BOOL ami_gui_opts_event(void)
+static BOOL ami_gui_opts_event(void *w)
 {
 	/* return TRUE if window destroyed */
 	ULONG result,data = 0;
@@ -2084,7 +2101,7 @@ BOOL ami_gui_opts_event(void)
        	switch(result & WMHI_CLASSMASK) // class
    		{
 			case WMHI_CLOSEWINDOW:
-				ami_gui_opts_close();
+				ami_gui_opts_close(gow);
 				return TRUE;
 			break;
 
@@ -2103,7 +2120,7 @@ BOOL ami_gui_opts_event(void)
 				{
 					case GID_OPTS_SAVE:
 						ami_gui_opts_use(true);
-						ami_gui_opts_close();
+						ami_gui_opts_close(gow);
 						return TRUE;
 					break;
 
@@ -2112,7 +2129,7 @@ BOOL ami_gui_opts_event(void)
 						// fall through
 
 					case GID_OPTS_CANCEL:
-						ami_gui_opts_close();
+						ami_gui_opts_close(gow);
 						return TRUE;
 					break;
 
@@ -2125,7 +2142,7 @@ BOOL ami_gui_opts_event(void)
 					case GID_OPTS_HOMEPAGE_CURRENT:
 						if(cur_gw) RefreshSetGadgetAttrs((struct Gadget *)gow->objects[GID_OPTS_HOMEPAGE],
 							gow->win, NULL, STRINGA_TextVal,
-							nsurl_access(browser_window_get_url(cur_gw->bw)), TAG_DONE);
+							nsurl_access(browser_window_access_url(cur_gw->bw)), TAG_DONE);
 					break;
 
 					case GID_OPTS_HOMEPAGE_BLANK:
@@ -2284,7 +2301,7 @@ struct List *ami_gui_opts_websearch(void)
 	const char *name;
 	int iter;
 
-	list = AllocVecTagList(sizeof(struct List), NULL);
+	list = malloc(sizeof(struct List));
 	NewList(list);
 
 	if (nsoption_charp(search_engines_file) == NULL) return list;
@@ -2314,6 +2331,6 @@ void ami_gui_opts_websearch_free(struct List *websearchlist)
 		FreeChooserNode(node);
 	} while((node = nnode));
 
-	FreeVec(websearchlist);
+	free(websearchlist);
 }
 

@@ -99,7 +99,7 @@ const char *ami_font_scan_lookup(const uint16 *code, lwc_string **glypharray)
 static struct ami_font_scan_window *ami_font_scan_gui_open(int32 fonts)
 {
 	struct ami_font_scan_window *fsw =
-		AllocVecTagList(sizeof(struct ami_font_scan_window), NULL);
+		malloc(sizeof(struct ami_font_scan_window));
 
 	if(fsw == NULL) return NULL;
 
@@ -201,7 +201,7 @@ static void ami_font_scan_gui_close(struct ami_font_scan_window *fsw)
 	if(fsw) {
 		DisposeObject(fsw->objects[FS_OID_MAIN]);
 		ami_utf8_free(fsw->title);
-		FreeVec(fsw);
+		free(fsw);
 	}
 }
 
@@ -255,7 +255,8 @@ static ULONG ami_font_scan_font(const char *fontname, lwc_string **glypharray)
 #ifdef __amigaos4__
 	if(EObtainInfo(AMI_OFONT_ENGINE, OT_UnicodeRanges, &unicoderanges, TAG_END) == 0) {
 		if(unicoderanges & UCR_SURROGATES) {
-			LOG("%s supports UTF-16 surrogates", fontname);
+			NSLOG(netsurf, INFO, "%s supports UTF-16 surrogates",
+			      fontname);
 			if (nsoption_charp(font_surrogate) == NULL) {
 				nsoption_set_charp(font_surrogate, (char *)strdup(fontname));
 			}
@@ -292,10 +293,11 @@ static ULONG ami_font_scan_fonts(struct MinList *list,
 	do {
 		nnode = (struct nsObject *)GetSucc((struct Node *)node);
 		ami_font_scan_gui_update(win, node->dtz_Node.ln_Name, font_num, total);
-		LOG("Scanning %s", node->dtz_Node.ln_Name);
+		NSLOG(netsurf, INFO, "Scanning %s", node->dtz_Node.ln_Name);
 		found = ami_font_scan_font(node->dtz_Node.ln_Name, glypharray);
 		total += found;
-		LOG("Found %ld new glyphs (total = %ld)", found, total);
+		NSLOG(netsurf, INFO, "Found %ld new glyphs (total = %ld)",
+		      found, total);
 		font_num++;
 	} while((node = nnode));
 
@@ -317,10 +319,10 @@ static ULONG ami_font_scan_list(struct MinList *list)
 	struct nsObject *node;
 
 	do {
-		if((afh = (struct AvailFontsHeader *)AllocVecTagList(afSize, NULL))) {
+		if((afh = (struct AvailFontsHeader *)malloc(afSize))) {
 			if(((afShortage = AvailFonts((STRPTR)afh, afSize,
 					AFF_DISK | AFF_OTAG | AFF_SCALED)))) {
-				FreeVec(afh);
+				free(afh);
 				afSize += afShortage;
 			}
 		} else {
@@ -344,13 +346,15 @@ static ULONG ami_font_scan_list(struct MinList *list)
 						if(node) {
 							node->dtz_Node.ln_Name = strdup(af[i].af_Attr.ta_Name);
 							found++;
-							LOG("Added %s", af[i].af_Attr.ta_Name);
+							NSLOG(netsurf, INFO,
+							      "Added %s",
+							      af[i].af_Attr.ta_Name);
 						}
 					}
 				}
 			}
 		}
-		FreeVec(afh);
+		free(afh);
 	} else {
 		return 0;
 	}
@@ -382,7 +386,8 @@ static ULONG ami_font_scan_load(const char *filename, lwc_string **glypharray)
 	rargs = AllocDosObjectTags(DOS_RDARGS, TAG_DONE);
 
 	if((fh = FOpen(filename, MODE_OLDFILE, 0))) {
-		LOG("Loading font glyph cache from %s", filename);
+		NSLOG(netsurf, INFO, "Loading font glyph cache from %s",
+		      filename);
 
 		while(FGets(fh, (STRPTR)&buffer, 256) != 0)
 		{
@@ -423,7 +428,8 @@ void ami_font_scan_save(const char *filename, lwc_string **glypharray)
 	BPTR fh = 0;
 
 	if((fh = FOpen(filename, MODE_NEWFILE, 0))) {
-		LOG("Writing font glyph cache to %s", filename);
+		NSLOG(netsurf, INFO, "Writing font glyph cache to %s",
+		      filename);
 		FPrintf(fh, "; This file is auto-generated. To re-create the cache, delete this file.\n");
 		FPrintf(fh, "; This file is parsed using ReadArgs() with the following template:\n");
 		FPrintf(fh, "; CODE/A,FONT/A\n;\n");
@@ -482,7 +488,7 @@ void ami_font_scan_init(const char *filename, bool force_scan, bool save,
 		found = ami_font_scan_load(filename, glypharray);
 
 	if(found == 0) {
-		LOG("Creating new font glyph cache");
+		NSLOG(netsurf, INFO, "Creating new font glyph cache");
 		if((list = NewObjList())) {
 
 			/* add preferred fonts list */
@@ -504,7 +510,7 @@ void ami_font_scan_init(const char *filename, bool force_scan, bool save,
 			if(nsoption_bool(font_unicode_only) == false)
 				entries += ami_font_scan_list(list);
 
-			LOG("Found %ld fonts", entries);
+			NSLOG(netsurf, INFO, "Found %ld fonts", entries);
 
 			win = ami_font_scan_gui_open(entries);
 			found = ami_font_scan_fonts(list, win, glypharray);
@@ -517,6 +523,6 @@ void ami_font_scan_init(const char *filename, bool force_scan, bool save,
 		}
 	}
 
-	LOG("Initialised with %ld glyphs", found);
+	NSLOG(netsurf, INFO, "Initialised with %ld glyphs", found);
 }
 

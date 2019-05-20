@@ -32,14 +32,14 @@
  *
  * This provides something looking like:
  *
- * 			      root (a sentinel)
- * 				|
- * 	-------------------------------------------------
- * 	|	|	|	|	|	|	|
+ *			      root (a sentinel)
+ *				|
+ *	-------------------------------------------------
+ *	|	|	|	|	|	|	|
  *     com     edu     gov  127.0.0.1  net     org     uk	TLDs
- * 	|	|	|		|	|	|
+ *	|	|	|		|	|	|
  *    google   ...     ...             ...     ...     co	2LDs
- * 	|						|
+ *	|						|
  *     www					       bbc  Hosts/Subdomains
  *							|
  *						       www	...
@@ -62,11 +62,11 @@
  *
  *			    (sentinel)
  *				|
- * 			       path
- * 				|
- * 			       to
- * 				|
- * 			   resource.html
+ *			       path
+ *				|
+ *			       to
+ *				|
+ *			   resource.html
  *
  * This represents the absolute path "/path/to/resource.html". The leaf node
  * "resource.html" contains the last visited time of the resource.
@@ -108,6 +108,7 @@
 #include "utils/time.h"
 #include "utils/nsurl.h"
 #include "utils/ascii.h"
+#include "utils/http.h"
 #include "netsurf/bitmap.h"
 #include "desktop/cookie_manager.h"
 #include "desktop/gui_internal.h"
@@ -118,7 +119,7 @@
 /**
  * cookie entry.
  *
- * \warn This *must* be kept in sync with the public interface in
+ * \warning This *must* be kept in sync with the public interface in
  *   netsurf/cookie_db.h
  */
 struct cookie_internal_data {
@@ -143,28 +144,43 @@ struct cookie_internal_data {
 
 };
 
-/* A protection space is defined as a tuple canonical_root_url and realm.
- * This structure lives as linked list element in a leaf host_part struct
- * so we need additional scheme and port to have a canonical_root_url.  */
+
+/**
+ * A protection space
+ *
+ * This is defined as a tuple canonical_root_url and realm.  This
+ * structure lives as linked list element in a leaf host_part struct
+ * so we need additional scheme and port to have a canonical_root_url.
+ */
 struct prot_space_data {
-	lwc_string *scheme;	/**< URL scheme of canonical hostname of this
-				 * protection space. */
-	unsigned int port;	/**< Port number of canonical hostname of this
-				 * protection space. When 0, it means the
-				 * default port for given scheme, i.e. 80
-				 * (http), 443 (https). */
-	char *realm;		/**< Protection realm */
+	/**
+	 * URL scheme of canonical hostname of this protection space.
+	 */
+	lwc_string *scheme;
+	/**
+	 * Port number of canonical hostname of this protection
+	 * space. When 0, it means the default port for given scheme,
+	 * i.e. 80 (http), 443 (https).
+	 */
+	unsigned int port;
+	/** Protection realm */
+	char *realm;
 
-	char *auth;		/**< Authentication details for this
-				 * protection space in form
-				 * username:password */
-	struct prot_space_data *next;	/**< Next sibling */
+	/**
+	 * Authentication details for this protection space in form
+	 * username:password
+	 */
+	char *auth;
+	/** Next sibling */
+	struct prot_space_data *next;
 };
 
-struct cache_internal_data {
-	char filename[12];	/**< Cached filename, or first byte 0 for none */
-};
 
+/**
+ * meta data about a url
+ *
+ * \warning must be kept in sync with url_data structure in netsurf/url_db.h
+ */
 struct url_internal_data {
 	char *title;		/**< Resource title */
 	unsigned int visits;	/**< Visit count */
@@ -172,6 +188,10 @@ struct url_internal_data {
 	content_type type;	/**< Type of resource */
 };
 
+
+/**
+ * data entry for url
+ */
 struct path_data {
 	nsurl *url;		/**< Full URL */
 	lwc_string *scheme;	/**< URL scheme for data */
@@ -183,45 +203,66 @@ struct path_data {
 	char **fragment;	/**< Array of fragments */
 	bool persistent;	/**< This entry should persist */
 
-	struct bitmap *thumb;	/**< Thumbnail image of resource */
 	struct url_internal_data urld;	/**< URL data for resource */
-	struct cache_internal_data cache;	/**< Cache data for resource */
-	const struct prot_space_data *prot_space;	/**< Protection space
-				 * to which this resource belongs too. Can be
-				 * NULL when it does not belong to a protection
-				 * space or when it is not known. No
-				 * ownership (is with struct host_part::prot_space). */
-	struct cookie_internal_data *cookies;	/**< Cookies associated with resource */
-	struct cookie_internal_data *cookies_end;	/**< Last cookie in list */
+
+	/**
+	 * Protection space to which this resource belongs too. Can be
+	 * NULL when it does not belong to a protection space or when
+	 * it is not known. No ownership (is with struct host_part::prot_space).
+	 */
+	const struct prot_space_data *prot_space;
+	/** Cookies associated with resource */
+	struct cookie_internal_data *cookies;
+	/** Last cookie in list */
+	struct cookie_internal_data *cookies_end;
 
 	struct path_data *next;	/**< Next sibling */
 	struct path_data *prev;	/**< Previous sibling */
-	struct path_data *parent;	/**< Parent path segment */
-	struct path_data *children;	/**< Child path segments */
-	struct path_data *last;		/**< Last child */
+	struct path_data *parent; /**< Parent path segment */
+	struct path_data *children; /**< Child path segments */
+	struct path_data *last; /**< Last child */
+};
+
+struct hsts_data {
+	time_t expires; /**< Expiry time */
+	bool include_sub_domains; /**< Whether to include subdomains */
 };
 
 struct host_part {
-	/**< Known paths on this host. This _must_ be first so that
-	 * struct host_part *h = (struct host_part *)mypath; works */
+	/**
+	 * Known paths on this host. This _must_ be first so that
+	 * struct host_part *h = (struct host_part *)mypath; works
+	 */
 	struct path_data paths;
-	bool permit_invalid_certs;	/**< Allow access to SSL protected
-					 * resources on this host without
-					 * verifying certificate authenticity
-					 */
+	/**
+	 * Allow access to SSL protected resources on this host
+	 * without verifying certificate authenticity
+	 */
+	bool permit_invalid_certs;
+	/* HSTS data */
+	struct hsts_data hsts;
 
-	char *part;		/**< Part of host string */
+	/**
+	 * Part of host string
+	 */
+	char *part;
 
-	struct prot_space_data *prot_space;	/**< Linked list of all known
-				 * proctection spaces known for his host and
-				 * all its schems and ports. */
+	/**
+	 * Linked list of all known proctection spaces known for this
+	 * host and all its schems and ports.
+	 */
+	struct prot_space_data *prot_space;
 
 	struct host_part *next;	/**< Next sibling */
 	struct host_part *prev;	/**< Previous sibling */
-	struct host_part *parent;	/**< Parent host part */
-	struct host_part *children;	/**< Child host parts */
+	struct host_part *parent; /**< Parent host part */
+	struct host_part *children; /**< Child host parts */
 };
 
+
+/**
+ * search index node
+ */
 struct search_node {
 	const struct host_part *data;	/**< Host tree entry */
 
@@ -247,26 +288,56 @@ static struct search_node *search_trees[NUM_SEARCH_TREES] = {
 	&empty, &empty, &empty, &empty
 };
 
+/** Minimum cookie database file version */
 #define MIN_COOKIE_FILE_VERSION 100
+/** Current cookie database file version */
 #define COOKIE_FILE_VERSION 102
+/** loaded cookie file version */
 static int loaded_cookie_file_version;
+
+/** Minimum URL database file version */
 #define MIN_URL_FILE_VERSION 106
+/** Current URL database file version */
+#define URL_FILE_VERSION 107
 
-/** URL database file version */
-#define URL_FILE_VERSION 106
-
-/* Bloom filter used for short-circuting the false case of "is this
+/**
+ * filter for url presence in database
+ *
+ * Bloom filter used for short-circuting the false case of "is this
  * URL in the database?".  BLOOM_SIZE controls how large the filter is
  * in bytes.  Primitive experimentation shows that for a filter of X
  * bytes filled with X items, searching for X items not in the filter
  * has a 5% false-positive rate.  We set it to 32kB, which should be
- * enough for all but the largest databases, while not being shockingly
- * wasteful on memory.
+ * enough for all but the largest databases, while not being
+ * shockingly wasteful on memory.
  */
 static struct bloom_filter *url_bloom;
+/**
+ * Size of url filter
+ */
 #define BLOOM_SIZE (1024 * 32)
 
 
+/**
+ * write a time_t to a file portably
+ *
+ * \param fp File to write to
+ * \param val the unix time value to output
+ * \return NSERROR_OK on success
+ */
+static nserror urldb_write_timet(FILE *fp, time_t val)
+{
+	int use;
+	char op[32];
+
+	use = nsc_sntimet(op, 32, &val);
+	if (use == 0) {
+		fprintf(fp, "%i\n", (int)val);
+	} else {
+		fprintf(fp, "%.*s\n", use, op);
+	}
+	return NSERROR_OK;
+}
 
 /**
  * Write paths associated with a host
@@ -279,9 +350,14 @@ static struct bloom_filter *url_bloom;
  * \param path_used Used size of path
  * \param expiry Expiry time of URLs
  */
-static void urldb_write_paths(const struct path_data *parent, const char *host,
-		FILE *fp, char **path, int *path_alloc, int *path_used,
-		time_t expiry)
+static void
+urldb_write_paths(const struct path_data *parent,
+		  const char *host,
+		  FILE *fp,
+		  char **path,
+		  int *path_alloc,
+		  int *path_used,
+		  time_t expiry)
 {
 	const struct path_data *p = parent;
 	int i;
@@ -291,16 +367,19 @@ static void urldb_write_paths(const struct path_data *parent, const char *host,
 		int len = *path_used + seglen + 1;
 
 		if (*path_alloc < len) {
-			char *temp = realloc(*path,
-					(len > 64) ? len : *path_alloc + 64);
-			if (!temp)
+			char *temp;
+			temp = realloc(*path,
+				       (len > 64) ? len : *path_alloc + 64);
+			if (!temp) {
 				return;
+			}
 			*path = temp;
 			*path_alloc = (len > 64) ? len : *path_alloc + 64;
 		}
 
-		if (p->segment != NULL)
+		if (p->segment != NULL) {
 			memcpy(*path + *path_used - 1, p->segment, seglen);
+		}
 
 		if (p->children != NULL) {
 			(*path)[*path_used + seglen - 1] = '/';
@@ -317,22 +396,29 @@ static void urldb_write_paths(const struct path_data *parent, const char *host,
 			p = p->children;
 		} else {
 			/* leaf node */
-			if (p->persistent ||((p->urld.last_visit > expiry) &&
-					     (p->urld.visits > 0))) {
+			if (p->persistent ||
+			    ((p->urld.last_visit > expiry) &&
+			     (p->urld.visits > 0))) {
 				fprintf(fp, "%s\n", lwc_string_data(p->scheme));
 
-				if (p->port)
+				if (p->port) {
 					fprintf(fp,"%d\n", p->port);
-				else
+				} else {
 					fprintf(fp, "\n");
+				}
 
 				fprintf(fp, "%s\n", *path);
 
 				/** \todo handle fragments? */
 
-				fprintf(fp, "%i\n%i\n%i\n", p->urld.visits,
-					(int)p->urld.last_visit,
-					(int)p->urld.type);
+				/* number of visits */
+				fprintf(fp, "%i\n", p->urld.visits);
+
+				/* time entry was last used */
+				urldb_write_timet(fp, p->urld.last_visit);
+
+				/* entry type */
+				fprintf(fp, "%i\n", (int)p->urld.type);
 
 				fprintf(fp, "\n");
 
@@ -346,8 +432,9 @@ static void urldb_write_paths(const struct path_data *parent, const char *host,
 					     i--)
 						s[i] = '\0';
 					fprintf(fp, "%s\n", p->urld.title);
-				} else
+				} else {
 					fprintf(fp, "\n");
+				}
 			}
 
 			/* Now, find next node to process. */
@@ -384,8 +471,10 @@ static void urldb_write_paths(const struct path_data *parent, const char *host,
  * \param expiry Expiry time for URLs
  * \param count Pointer to count
  */
-static void urldb_count_urls(const struct path_data *root, time_t expiry,
-		unsigned int *count)
+static void
+urldb_count_urls(const struct path_data *root,
+		 time_t expiry,
+		 unsigned int *count)
 {
 	const struct path_data *p = root;
 
@@ -395,8 +484,9 @@ static void urldb_count_urls(const struct path_data *root, time_t expiry,
 			p = p->children;
 		} else {
 			/* No more children, increment count if required */
-			if (p->persistent || ((p->urld.last_visit > expiry) &&
-					      (p->urld.visits > 0))) {
+			if (p->persistent ||
+			    ((p->urld.last_visit > expiry) &&
+			     (p->urld.visits > 0))) {
 				(*count)++;
 			}
 
@@ -429,7 +519,8 @@ static void urldb_save_search_tree(struct search_node *parent, FILE *fp)
 	unsigned int path_count = 0;
 	char *path, *p, *end;
 	int path_alloc = 64, path_used = 1;
-	time_t expiry;
+	time_t expiry, hsts_expiry = 0;
+	int hsts_include_subdomains = 0;
 
 	expiry = time(NULL) - ((60 * 60 * 24) * nsoption_int(expire_url));
 
@@ -445,9 +536,9 @@ static void urldb_save_search_tree(struct search_node *parent, FILE *fp)
 	path[0] = '\0';
 
 	for (h = parent->data, p = host, end = host + sizeof host;
-			h && h != &db_root && p < end; h = h->parent) {
+	     h && h != &db_root && p < end; h = h->parent) {
 		int written = snprintf(p, end - p, "%s%s", h->part,
-				(h->parent && h->parent->parent) ? "." : "");
+				       (h->parent && h->parent->parent) ? "." : "");
 		if (written < 0) {
 			free(path);
 			return;
@@ -455,13 +546,25 @@ static void urldb_save_search_tree(struct search_node *parent, FILE *fp)
 		p += written;
 	}
 
+	h = parent->data;
+	if (h && h->hsts.expires > expiry) {
+		hsts_expiry = h->hsts.expires;
+		hsts_include_subdomains = h->hsts.include_sub_domains;
+	}
+
 	urldb_count_urls(&parent->data->paths, expiry, &path_count);
 
 	if (path_count > 0) {
-		fprintf(fp, "%s\n%i\n", host, path_count);
+		fprintf(fp, "%s %i ", host, hsts_include_subdomains);
+		urldb_write_timet(fp, hsts_expiry);
+		fprintf(fp, "%i\n", path_count);
 
 		urldb_write_paths(&parent->data->paths, host, fp,
-				&path, &path_alloc, &path_used, expiry);
+				  &path, &path_alloc, &path_used, expiry);
+	} else if (hsts_expiry) {
+		fprintf(fp, "%s %i ", host, hsts_include_subdomains);
+		urldb_write_timet(fp, hsts_expiry);
+		fprintf(fp, "0\n");
 	}
 
 	free(path);
@@ -478,7 +581,8 @@ static void urldb_save_search_tree(struct search_node *parent, FILE *fp)
  * \param cookie_callback Callback function
  * \return true to continue, false otherwise
  */
-static bool urldb_iterate_entries_path(const struct path_data *parent,
+static bool
+urldb_iterate_entries_path(const struct path_data *parent,
 		bool (*url_callback)(nsurl *url, const struct url_data *data),
 		bool (*cookie_callback)(const struct cookie_data *data))
 {
@@ -503,7 +607,7 @@ static bool urldb_iterate_entries_path(const struct path_data *parent,
 				assert(p->url);
 
 				if (!url_callback(p->url,
-						(const struct url_data *) u))
+						  (const struct url_data *) u))
 					return false;
 			} else {
 				c = (const struct cookie_data *)p->cookies;
@@ -550,8 +654,10 @@ static bool urldb__host_is_ip_address(const char *host)
 #ifndef NO_IPV6
 	struct in6_addr ipv6;
 	char ipv6_addr[64];
+	unsigned int ipv6_addr_len;
 #endif
-	/** @todo FIXME Some parts of urldb.c make confusions between hosts
+	/**
+	 * @todo FIXME Some parts of urldb.c make confusions between hosts
 	 * and "prefixes", we can sometimes be erroneously passed more than
 	 * just a host.  Sometimes we may be passed trailing slashes, or even
 	 * whole path segments.  A specific criminal in this class is
@@ -575,8 +681,9 @@ static bool urldb__host_is_ip_address(const char *host)
 		char *c = strdup(host);
 		c[slash - host] = '\0';
 		sane_host = c;
-		host_len = slash - host - 1;
-		LOG("WARNING: called with non-host '%s'", host);
+		host_len = slash - host;
+		NSLOG(netsurf, INFO, "WARNING: called with non-host '%s'",
+		      host);
 	}
 
 	if (strspn(sane_host, "0123456789abcdefABCDEF[].:") < host_len)
@@ -603,11 +710,18 @@ static bool urldb__host_is_ip_address(const char *host)
 	}
 
 #ifndef NO_IPV6
-	if (sane_host[0] != '[' || sane_host[host_len] != ']')
+	if ((host_len < 6) ||
+	    (sane_host[0] != '[') ||
+	    (sane_host[host_len - 1] != ']')) {
 		goto out_false;
+	}
 
-	strncpy(ipv6_addr, sane_host + 1, sizeof(ipv6_addr));
-	ipv6_addr[sizeof(ipv6_addr) - 1] = '\0';
+	ipv6_addr_len = host_len - 2;
+	if (ipv6_addr_len >= sizeof(ipv6_addr)) {
+		ipv6_addr_len = sizeof(ipv6_addr) - 1;
+	}
+	strncpy(ipv6_addr, sane_host + 1, ipv6_addr_len);
+	ipv6_addr[ipv6_addr_len] = '\0';
 
 	if (inet_pton(AF_INET6, ipv6_addr, &ipv6) == 1)
 		goto out_true;
@@ -626,8 +740,8 @@ out_true:
 /**
  * Compare host_part with prefix
  *
- * \param a
- * \param b
+ * \param a host part
+ * \param b prefix
  * \return 0 if match, non-zero, otherwise
  */
 static int urldb_search_match_prefix(const struct host_part *a, const char *b)
@@ -661,12 +775,13 @@ static int urldb_search_match_prefix(const struct host_part *a, const char *b)
 			/* Consider segment lengths only in the case
 			 * where the prefix contains segments */
 			plen = strlen(a->part);
-			if (plen > dot - b)
+			if (plen > dot - b) {
 				/* len(a) > len(b) */
 				return 1;
-			else if (plen < dot - b)
+			} else if (plen < dot - b) {
 				/* len(a) < len(b) */
 				return -1;
+			}
 		}
 
 		b = dot + 1;
@@ -677,12 +792,13 @@ static int urldb_search_match_prefix(const struct host_part *a, const char *b)
 	 *    a) The path lengths differ
 	 * or b) The hosts are identical
 	 */
-	if (a && a != &db_root && b >= end)
+	if (a && a != &db_root && b >= end) {
 		/* len(a) > len(b) => prefix matches */
 		return 0;
-	else if ((!a || a == &db_root) && b < end)
+	} else if ((!a || a == &db_root) && b < end) {
 		/* len(a) < len(b) => prefix does not match */
 		return -1;
+	}
 
 	/* Identical */
 	return 0;
@@ -711,31 +827,38 @@ urldb_iterate_partial_host(struct search_node *root,
 
 	c = urldb_search_match_prefix(root->data, prefix);
 
-	if (c > 0)
+	if (c > 0) {
 		/* No match => look in left subtree */
-		return urldb_iterate_partial_host(root->left, prefix,
-				callback);
-	else if (c < 0)
+		return urldb_iterate_partial_host(root->left,
+						  prefix,
+						  callback);
+	} else if (c < 0) {
 		/* No match => look in right subtree */
-		return urldb_iterate_partial_host(root->right, prefix,
-				callback);
-	else {
+		return urldb_iterate_partial_host(root->right,
+						  prefix,
+						  callback);
+	} else {
 		/* Match => iterate over l/r subtrees & process this node */
-		if (!urldb_iterate_partial_host(root->left, prefix,
-				callback))
+		if (!urldb_iterate_partial_host(root->left,
+						prefix,
+						callback)) {
 			return false;
+		}
 
 		if (root->data->paths.children) {
 			/* and extract all paths attached to this host */
 			if (!urldb_iterate_entries_path(&root->data->paths,
-					callback, NULL)) {
+							callback,
+							NULL)) {
 				return false;
 			}
 		}
 
-		if (!urldb_iterate_partial_host(root->right, prefix,
-				callback))
+		if (!urldb_iterate_partial_host(root->right,
+						prefix,
+						callback)) {
 			return false;
+		}
 	}
 
 	return true;
@@ -745,54 +868,54 @@ urldb_iterate_partial_host(struct search_node *root,
 /**
  * Partial path iterator (internal)
  *
+ * Given: http://www.example.org/a/b/c/d//e
+ * and assuming a path tree:
+ *     ^
+ *    /	\
+ *   a1 b1
+ *  / \
+ * a2 b2
+ *    /|\
+ *   a b c
+ *   3 3 |
+ *       d
+ *       |
+ *       e
+ *      / \
+ *      f g
+ *
+ * Prefix will be:	p will be:
+ *
+ * a/b/c/d//e		a1
+ *   b/c/d//e		a2
+ *   b/c/d//e		b3
+ *     c/d//e		a3
+ *     c/d//e		b3
+ *     c/d//e		c
+ *       d//e		d
+ *         /e		e		(skip /)
+ *          e		e
+ *
+ * I.E. perform a breadth-first search of the tree.
+ *
  * \param parent Root of (sub)tree to traverse
  * \param prefix Prefix to match
  * \param callback Callback function
  * \return true to continue, false otherwise
  */
-static bool urldb_iterate_partial_path(const struct path_data *parent,
-		const char *prefix, bool (*callback)(nsurl *url,
-		const struct url_data *data))
+static bool
+urldb_iterate_partial_path(const struct path_data *parent,
+		const char *prefix,
+		bool (*callback)(nsurl *url, const struct url_data *data))
 {
 	const struct path_data *p = parent->children;
 	const char *slash, *end = prefix + strlen(prefix);
 
-	/*
-	 * Given: http://www.example.org/a/b/c/d//e
-	 * and assuming a path tree:
-	 *     .
-	 *    / \
-	 *   a1 b1
-	 *  / \
-	 * a2 b2
-	 *    /|\
-	 *   a b c
-	 *   3 3 |
-	 *       d
-	 *       |
-	 *       e
-	 *      / \
-	 *      f g
-	 *
-	 * Prefix will be:	p will be:
-	 *
-	 * a/b/c/d//e		a1
-	 *   b/c/d//e		a2
-	 *   b/c/d//e		b3
-	 *     c/d//e		a3
-	 *     c/d//e		b3
-	 *     c/d//e		c
-	 *       d//e		d
-	 *         /e		e		(skip /)
-	 *          e		e
-	 *
-	 * I.E. we perform a breadth-first search of the tree.
-	 */
-
 	do {
 		slash = strchr(prefix, '/');
-		if (!slash)
+		if (!slash) {
 			slash = end;
+		}
 
 		if (slash == prefix && *prefix == '/') {
 			/* Ignore "//" */
@@ -805,9 +928,11 @@ static bool urldb_iterate_partial_path(const struct path_data *parent,
 			if (slash == end) {
 				/* we've run out of prefix, so all
 				 * paths below this one match */
-				if (!urldb_iterate_entries_path(p, callback,
-						NULL))
+				if (!urldb_iterate_entries_path(p,
+								callback,
+								NULL)) {
 					return false;
+				}
 
 				/* Progress to next sibling */
 				p = p->next;
@@ -835,30 +960,37 @@ static bool urldb_iterate_partial_path(const struct path_data *parent,
  * \param cookie_callback Callback function
  * \return true to continue, false otherwise
  */
-static bool urldb_iterate_entries_host(struct search_node *parent,
-		bool (*url_callback)(nsurl *url,
-				const struct url_data *data),
+static bool
+urldb_iterate_entries_host(struct search_node *parent,
+		bool (*url_callback)(nsurl *url, const struct url_data *data),
 		bool (*cookie_callback)(const struct cookie_data *data))
 {
-	if (parent == &empty)
+	if (parent == &empty) {
 		return true;
+	}
 
 	if (!urldb_iterate_entries_host(parent->left,
-			url_callback, cookie_callback))
+					url_callback,
+					cookie_callback)) {
 		return false;
+	}
 
-	if ((parent->data->paths.children) || ((cookie_callback) &&
-			(parent->data->paths.cookies))) {
+	if ((parent->data->paths.children) ||
+	    ((cookie_callback) &&
+	     (parent->data->paths.cookies))) {
 		/* We have paths (or domain cookies), so iterate them */
 		if (!urldb_iterate_entries_path(&parent->data->paths,
-				url_callback, cookie_callback)) {
+						url_callback,
+						cookie_callback)) {
 			return false;
 		}
 	}
 
 	if (!urldb_iterate_entries_host(parent->right,
-			url_callback, cookie_callback))
+					url_callback,
+					cookie_callback)) {
 		return false;
+	}
 
 	return true;
 }
@@ -871,16 +1003,17 @@ static bool urldb_iterate_entries_host(struct search_node *parent,
  * \param parent Parent node to add to
  * \return Pointer to added node, or NULL on memory exhaustion
  */
-static struct host_part *urldb_add_host_node(const char *part,
-		struct host_part *parent)
+static struct host_part *
+urldb_add_host_node(const char *part, struct host_part *parent)
 {
 	struct host_part *d;
 
 	assert(part && parent);
 
 	d = calloc(1, sizeof(struct host_part));
-	if (!d)
+	if (!d) {
 		return NULL;
+	}
 
 	d->part = strdup(part);
 	if (!d->part) {
@@ -889,8 +1022,9 @@ static struct host_part *urldb_add_host_node(const char *part,
 	}
 
 	d->next = parent->children;
-	if (parent->children)
+	if (parent->children) {
 		parent->children->prev = d;
+	}
 	d->parent = parent;
 	parent->children = d;
 
@@ -900,6 +1034,10 @@ static struct host_part *urldb_add_host_node(const char *part,
 
 /**
  * Fragment comparator callback for qsort
+ *
+ * \param a first value
+ * \param b second value
+ * \return 0 for equal else positive or negative value on comparison
  */
 static int urldb_add_path_fragment_cmp(const void *a, const void *b)
 {
@@ -928,13 +1066,13 @@ urldb_add_path_fragment(struct path_data *segment, lwc_string *fragment)
 		return segment;
 
 	temp = realloc(segment->fragment,
-			(segment->frag_cnt + 1) * sizeof(char *));
+		       (segment->frag_cnt + 1) * sizeof(char *));
 	if (!temp)
 		return NULL;
 
 	segment->fragment = temp;
 	segment->fragment[segment->frag_cnt] =
-			strdup(lwc_string_data(fragment));
+		strdup(lwc_string_data(fragment));
 	if (!segment->fragment[segment->frag_cnt]) {
 		/* Don't free temp - it's now our buffer */
 		return NULL;
@@ -944,8 +1082,10 @@ urldb_add_path_fragment(struct path_data *segment, lwc_string *fragment)
 
 	/* We want fragments in alphabetical order, so sort them
 	 * It may prove better to insert in alphabetical order instead */
-	qsort(segment->fragment, segment->frag_cnt, sizeof (char *),
-			urldb_add_path_fragment_cmp);
+	qsort(segment->fragment,
+	      segment->frag_cnt,
+	      sizeof (char *),
+	      urldb_add_path_fragment_cmp);
 
 	return segment;
 }
@@ -962,9 +1102,11 @@ urldb_add_path_fragment(struct path_data *segment, lwc_string *fragment)
  * \return Pointer to added node, or NULL on memory exhaustion
  */
 static struct path_data *
-urldb_add_path_node(lwc_string *scheme, unsigned int port,
-		const char *segment, lwc_string *fragment,
-		struct path_data *parent)
+urldb_add_path_node(lwc_string *scheme,
+		    unsigned int port,
+		    const char *segment,
+		    lwc_string *fragment,
+		    struct path_data *parent)
 {
 	struct path_data *d, *e;
 
@@ -1025,7 +1167,7 @@ urldb_add_path_node(lwc_string *scheme, unsigned int port,
 /**
  * Get the search tree for a particular host
  *
- * \param host  the host to lookup
+ * \param host the host to lookup
  * \return the corresponding search tree
  */
 static struct search_node **urldb_get_search_tree_direct(const char *host)
@@ -1044,7 +1186,7 @@ static struct search_node **urldb_get_search_tree_direct(const char *host)
 /**
  * Get the search tree for a particular host
  *
- * \param host  the host to lookup
+ * \param host the host to lookup
  * \return the corresponding search tree
  */
 static struct search_node *urldb_get_search_tree(const char *host)
@@ -1054,10 +1196,10 @@ static struct search_node *urldb_get_search_tree(const char *host)
 
 
 /**
- * Compare host_part with a string
+ * Compare host part with a string
  *
- * \param a
- * \param b
+ * \param a host part
+ * \param b string to compare
  * \return 0 if match, non-zero, otherwise
  */
 static int urldb_search_match_string(const struct host_part *a, const char *b)
@@ -1089,12 +1231,13 @@ static int urldb_search_match_string(const struct host_part *a, const char *b)
 		/* The strings matched, now check that the lengths do, too */
 		plen = strlen(a->part);
 
-		if (plen > dot - b)
+		if (plen > dot - b) {
 			/* len(a) > len(b) */
 			return 1;
-		else if (plen < dot - b)
+		} else if (plen < dot - b) {
 			/* len(a) < len(b) */
 			return -1;
+		}
 
 		b = dot + 1;
 		a = a->parent;
@@ -1104,12 +1247,13 @@ static int urldb_search_match_string(const struct host_part *a, const char *b)
 	 *    a) The path lengths differ
 	 * or b) The hosts are identical
 	 */
-	if (a && a != &db_root && b >= end)
+	if (a && a != &db_root && b >= end) {
 		/* len(a) > len(b) */
 		return 1;
-	else if ((!a || a == &db_root) && b < end)
+	} else if ((!a || a == &db_root) && b < end) {
 		/* len(a) < len(b) */
 		return -1;
+	}
 
 	/* Identical */
 	return 0;
@@ -1136,12 +1280,13 @@ urldb_search_find(struct search_node *root, const char *host)
 
 	c = urldb_search_match_string(root->data, host);
 
-	if (c > 0)
+	if (c > 0) {
 		return urldb_search_find(root->left, host);
-	else if (c < 0)
+	} else if (c < 0) {
 		return urldb_search_find(root->right, host);
-	else
-		return root->data;
+	}
+
+	return root->data;
 }
 
 
@@ -1154,8 +1299,11 @@ urldb_search_find(struct search_node *root, const char *host)
  * \param port The port associated with the path
  * \return Pointer to path data or NULL if not found.
  */
-static struct path_data *urldb_match_path(const struct path_data *parent,
-		const char *path, lwc_string *scheme, unsigned short port)
+static struct path_data *
+urldb_match_path(const struct path_data *parent,
+		 const char *path,
+		 lwc_string *scheme,
+		 unsigned short port)
 {
 	const struct path_data *p;
 	const char *slash;
@@ -1165,7 +1313,7 @@ static struct path_data *urldb_match_path(const struct path_data *parent,
 	assert(parent->segment == NULL);
 
 	if (path[0] != '/') {
-		LOG("path is %s", path);
+		NSLOG(netsurf, INFO, "path is %s", path);
 	}
 
 	assert(path[0] == '/');
@@ -1175,14 +1323,14 @@ static struct path_data *urldb_match_path(const struct path_data *parent,
 
 	while (p != NULL) {
 		slash = strchr(path + 1, '/');
-		if (!slash)
+		if (!slash) {
 			slash = path + strlen(path);
+		}
 
 		if (strncmp(p->segment, path + 1, slash - path - 1) == 0 &&
-				lwc_string_isequal(p->scheme, scheme, &match) ==
-						lwc_error_ok &&
-				match == true &&
-				p->port == port) {
+		    lwc_string_isequal(p->scheme, scheme, &match) == lwc_error_ok &&
+		    match == true &&
+		    p->port == port) {
 			if (*slash == '\0') {
 				/* Complete match */
 				return (struct path_data *) p;
@@ -1233,7 +1381,7 @@ static struct path_data *urldb_find_url(nsurl *url)
 		return NULL;
 
 	if (lwc_string_isequal(scheme, corestring_lwc_mailto, &match) ==
-			lwc_error_ok && match == true) {
+	    lwc_error_ok && match == true) {
 		lwc_string_unref(scheme);
 		return NULL;
 	}
@@ -1244,7 +1392,7 @@ static struct path_data *urldb_find_url(nsurl *url)
 		lwc_string_unref(host);
 
 	} else if (lwc_string_isequal(scheme, corestring_lwc_file, &match) ==
-			lwc_error_ok && match == true) {
+		   lwc_error_ok && match == true) {
 		host_str = "localhost";
 
 	} else {
@@ -1260,8 +1408,7 @@ static struct path_data *urldb_find_url(nsurl *url)
 	}
 
 	/* generate plq (path, leaf, query) */
-	if (nsurl_get(url, NSURL_PATH | NSURL_QUERY, &plq, &len) !=
-			NSERROR_OK) {
+	if (nsurl_get(url, NSURL_PATH | NSURL_QUERY, &plq, &len) != NSERROR_OK) {
 		lwc_string_unref(scheme);
 		return NULL;
 	}
@@ -1296,12 +1443,15 @@ static void urldb_dump_paths(struct path_data *parent)
 
 	do {
 		if (p->segment != NULL) {
-			LOG("\t%s : %u", lwc_string_data(p->scheme), p->port);
+			NSLOG(netsurf, INFO, "\t%s : %u",
+			      lwc_string_data(p->scheme), p->port);
 
-			LOG("\t\t'%s'", p->segment);
+			NSLOG(netsurf, INFO, "\t\t'%s'", p->segment);
 
-			for (i = 0; i != p->frag_cnt; i++)
-				LOG("\t\t\t#%s", p->fragment[i]);
+			for (i = 0; i != p->frag_cnt; i++) {
+				NSLOG(netsurf, INFO, "\t\t\t#%s",
+				      p->fragment[i]);
+			}
 		}
 
 		if (p->children != NULL) {
@@ -1330,17 +1480,19 @@ static void urldb_dump_hosts(struct host_part *parent)
 	struct host_part *h;
 
 	if (parent->part) {
-		LOG("%s", parent->part);
+		NSLOG(netsurf, INFO, "%s", parent->part);
 
-		LOG("\t%s invalid SSL certs", parent->permit_invalid_certs ? "Permits" : "Denies");
+		NSLOG(netsurf, INFO, "\t%s invalid SSL certs",
+		      parent->permit_invalid_certs ? "Permits" : "Denies");
 	}
 
 	/* Dump path data */
 	urldb_dump_paths(&parent->paths);
 
 	/* and recurse */
-	for (h = parent->children; h; h = h->next)
+	for (h = parent->children; h; h = h->next) {
 		urldb_dump_hosts(h);
+	}
 }
 
 
@@ -1357,7 +1509,7 @@ static void urldb_dump_search(struct search_node *parent, int depth)
 	char s[1024];
 	int r;
 	int sl = sizeof(s) - 2;
-	
+
 	if (parent == &empty)
 		return;
 
@@ -1383,17 +1535,17 @@ static void urldb_dump_search(struct search_node *parent, int depth)
 	}
 	s[i]= 0;
 
-	LOG("%s", s);
+	NSLOG(netsurf, INFO, "%s", s);
 
 	urldb_dump_search(parent->right, depth + 1);
 }
 
 
 /**
- * Compare a pair of host_parts
+ * Compare a pair of host parts
  *
- * \param a
- * \param b
+ * \param a first host part
+ * \param b second host part
  * \return 0 if match, non-zero, otherwise
  */
 static int
@@ -1405,21 +1557,24 @@ urldb_search_match_host(const struct host_part *a, const struct host_part *b)
 
 	/* traverse up tree to root, comparing parts as we go. */
 	for (; a && a != &db_root && b && b != &db_root;
-			a = a->parent, b = b->parent)
-		if ((ret = strcasecmp(a->part, b->part)) != 0)
+	     a = a->parent, b = b->parent) {
+		if ((ret = strcasecmp(a->part, b->part)) != 0) {
 			/* They differ => return the difference here */
 			return ret;
+		}
+	}
 
 	/* If we get here then either:
 	 *    a) The path lengths differ
 	 * or b) The hosts are identical
 	 */
-	if (a && a != &db_root && (!b || b == &db_root))
+	if (a && a != &db_root && (!b || b == &db_root)) {
 		/* len(a) > len(b) */
 		return 1;
-	else if ((!a || a == &db_root) && b && b != &db_root)
+	} else if ((!a || a == &db_root) && b && b != &db_root) {
 		/* len(a) < len(b) */
 		return -1;
+	}
 
 	/* identical */
 	return 0;
@@ -1434,11 +1589,11 @@ urldb_search_match_host(const struct host_part *a, const struct host_part *b)
  */
 static struct search_node *urldb_search_skew(struct search_node *root)
 {
-	struct search_node *temp;
-
 	assert(root);
 
 	if (root->left->level == root->level) {
+		struct search_node *temp;
+
 		temp = root->left;
 		root->left = temp->right;
 		temp->right = root;
@@ -1457,11 +1612,11 @@ static struct search_node *urldb_search_skew(struct search_node *root)
  */
 static struct search_node *urldb_search_split(struct search_node *root)
 {
-	struct search_node *temp;
-
 	assert(root);
 
 	if (root->right->right->level == root->level) {
+		struct search_node *temp;
+
 		temp = root->right;
 		root->right = temp->left;
 		temp->left = root;
@@ -1493,10 +1648,10 @@ urldb_search_insert_internal(struct search_node *root, struct search_node *n)
 
 		if (c > 0) {
 			root->left = urldb_search_insert_internal(
-					root->left, n);
+				root->left, n);
 		} else if (c < 0) {
 			root->right = urldb_search_insert_internal(
-					root->right, n);
+				root->right, n);
 		} else {
 			/* exact match */
 			free(n);
@@ -1548,8 +1703,11 @@ urldb_search_insert(struct search_node *root, const struct host_part *data)
  * \param was_quoted Whether \a v was quoted in the input
  * \return true on success, false on memory exhaustion
  */
-static bool urldb_parse_avpair(struct cookie_internal_data *c, char *n,
-			       char *v, bool was_quoted)
+static bool
+urldb_parse_avpair(struct cookie_internal_data *c,
+		   char *n,
+		   char *v,
+		   bool was_quoted)
 {
 	int vlen;
 
@@ -1623,7 +1781,7 @@ static bool urldb_parse_avpair(struct cookie_internal_data *c, char *n,
 			/* do nothing */
 		}
 
-                res = nsc_strntimet(datenoday, strlen(datenoday), &expires);
+		res = nsc_strntimet(datenoday, strlen(datenoday), &expires);
 		if (res != NSERROR_OK) {
 			/* assume we have an unrepresentable date =>
 			 * force it to the maximum possible value of a
@@ -1640,8 +1798,9 @@ static bool urldb_parse_avpair(struct cookie_internal_data *c, char *n,
 		c->name = strdup(n);
 		c->value = strdup(v);
 		c->value_was_quoted = was_quoted;
-		if (!c->name || !c->value)
+		if (!c->name || !c->value) {
 			return false;
+		}
 	}
 
 	return true;
@@ -1911,6 +2070,180 @@ urldb_parse_cookie(nsurl *url, const char **cookie)
 
 
 /**
+ * Add a path to the database, creating any intermediate entries
+ *
+ * \param scheme URL scheme associated with path
+ * \param port Port number on host associated with path
+ * \param host Host tree node to attach to
+ * \param path_query Absolute path plus query to add (freed)
+ * \param fragment URL fragment, or NULL
+ * \param url URL (fragment ignored)
+ * \return Pointer to leaf node, or NULL on memory exhaustion
+ */
+static struct path_data *
+urldb_add_path(lwc_string *scheme,
+	       unsigned int port,
+	       const struct host_part *host,
+	       char *path_query,
+	       lwc_string *fragment,
+	       nsurl *url)
+{
+	struct path_data *d, *e;
+	char *buf = path_query;
+	char *segment, *slash;
+	bool match;
+
+	assert(scheme && host && url);
+
+	d = (struct path_data *) &host->paths;
+
+	/* skip leading '/' */
+	segment = buf;
+	if (*segment == '/')
+		segment++;
+
+	/* Process path segments */
+	do {
+		slash = strchr(segment, '/');
+		if (!slash) {
+			/* last segment */
+			/* look for existing entry */
+			for (e = d->children; e; e = e->next)
+				if (strcmp(segment, e->segment) == 0 &&
+				    lwc_string_isequal(scheme,
+						       e->scheme, &match) ==
+				    lwc_error_ok &&
+				    match == true &&
+				    e->port == port)
+					break;
+
+			d = e ? urldb_add_path_fragment(e, fragment) :
+				urldb_add_path_node(scheme, port,
+						    segment, fragment, d);
+			break;
+		}
+
+		*slash = '\0';
+
+		/* look for existing entry */
+		for (e = d->children; e; e = e->next)
+			if (strcmp(segment, e->segment) == 0 &&
+			    lwc_string_isequal(scheme, e->scheme,
+					       &match) == lwc_error_ok &&
+			    match == true &&
+			    e->port == port)
+				break;
+
+		d = e ? e : urldb_add_path_node(scheme, port, segment, NULL, d);
+		if (!d)
+			break;
+
+		segment = slash + 1;
+	} while (1);
+
+	free(path_query);
+
+	if (d && !d->url) {
+		/* Insert defragmented URL */
+		if (nsurl_defragment(url, &d->url) != NSERROR_OK)
+			return NULL;
+	}
+
+	return d;
+}
+
+
+/**
+ * Add a host to the database, creating any intermediate entries
+ *
+ * \param host Hostname to add
+ * \return Pointer to leaf node, or NULL on memory exhaustion
+ */
+static struct host_part *urldb_add_host(const char *host)
+{
+	struct host_part *d = (struct host_part *) &db_root, *e;
+	struct search_node *s;
+	char buf[256]; /* 256 bytes is sufficient - domain names are
+			* limited to 255 chars. */
+	char *part;
+
+	assert(host);
+
+	if (urldb__host_is_ip_address(host)) {
+		/* Host is an IP, so simply add as TLD */
+
+		/* Check for existing entry */
+		for (e = d->children; e; e = e->next)
+			if (strcasecmp(host, e->part) == 0)
+				/* found => return it */
+				return e;
+
+		d = urldb_add_host_node(host, d);
+
+		s = urldb_search_insert(search_trees[ST_IP], d);
+		if (!s) {
+			/* failed */
+			d = NULL;
+		} else {
+			search_trees[ST_IP] = s;
+		}
+
+		return d;
+	}
+
+	/* Copy host string, so we can corrupt it */
+	strncpy(buf, host, sizeof buf);
+	buf[sizeof buf - 1] = '\0';
+
+	/* Process FQDN segments backwards */
+	do {
+		part = strrchr(buf, '.');
+		if (!part) {
+			/* last segment */
+			/* Check for existing entry */
+			for (e = d->children; e; e = e->next)
+				if (strcasecmp(buf, e->part) == 0)
+					break;
+
+			if (e) {
+				d = e;
+			} else {
+				d = urldb_add_host_node(buf, d);
+			}
+
+			/* And insert into search tree */
+			if (d) {
+				struct search_node **r;
+
+				r = urldb_get_search_tree_direct(buf);
+				s = urldb_search_insert(*r, d);
+				if (!s) {
+					/* failed */
+					d = NULL;
+				} else {
+					*r = s;
+				}
+			}
+			break;
+		}
+
+		/* Check for existing entry */
+		for (e = d->children; e; e = e->next)
+			if (strcasecmp(part + 1, e->part) == 0)
+				break;
+
+		d = e ? e : urldb_add_host_node(part + 1, d);
+		if (!d)
+			break;
+
+		*part = '\0';
+	} while (1);
+
+	return d;
+}
+
+
+/**
  * Insert a cookie into the database
  *
  * \param c The cookie to insert
@@ -1918,8 +2251,10 @@ urldb_parse_cookie(nsurl *url, const char **cookie)
  * \param url URL (sans fragment) associated with cookie
  * \return true on success, false on memory exhaustion (c will be freed)
  */
-static bool urldb_insert_cookie(struct cookie_internal_data *c,
-				lwc_string *scheme, nsurl *url)
+static bool
+urldb_insert_cookie(struct cookie_internal_data *c,
+		    lwc_string *scheme,
+		    nsurl *url)
 {
 	struct cookie_internal_data *d;
 	const struct host_part *h;
@@ -1947,8 +2282,8 @@ static bool urldb_insert_cookie(struct cookie_internal_data *c,
 		assert(scheme != NULL);
 
 		h = urldb_search_find(
-				urldb_get_search_tree(c->domain),
-				c->domain);
+			urldb_get_search_tree(c->domain),
+			c->domain);
 
 		if (!h) {
 			h = urldb_add_host(c->domain);
@@ -1960,7 +2295,7 @@ static bool urldb_insert_cookie(struct cookie_internal_data *c,
 
 		/* find path */
 		p = urldb_add_path(scheme, 0, h,
-				strdup(c->path), NULL, url);
+				   strdup(c->path), NULL, url);
 		if (!p) {
 			urldb_free_cookie(c);
 			return false;
@@ -1970,8 +2305,8 @@ static bool urldb_insert_cookie(struct cookie_internal_data *c,
 	/* add cookie */
 	for (d = p->cookies; d; d = d->next) {
 		if (!strcmp(d->domain, c->domain) &&
-				!strcmp(d->path, c->path) &&
-				!strcmp(d->name, c->name))
+		    !strcmp(d->path, c->path) &&
+		    !strcmp(d->name, c->name))
 			break;
 	}
 
@@ -2035,8 +2370,12 @@ static bool urldb_insert_cookie(struct cookie_internal_data *c,
  * \param buf Pointer to Pointer to buffer (updated)
  * \return true on success, false on memory exhaustion
  */
-static bool urldb_concat_cookie(struct cookie_internal_data *c, int version,
-		int *used, int *alloc, char **buf)
+static bool
+urldb_concat_cookie(struct cookie_internal_data *c,
+		    int version,
+		    int *used,
+		    int *alloc,
+		    char **buf)
 {
 	/* Combined (A)BNF for the Cookie: request header:
 	 *
@@ -2100,10 +2439,10 @@ static bool urldb_concat_cookie(struct cookie_internal_data *c, int version,
 	 * We allow for the possibility that values are quoted
 	 */
 	max_len = 2 + strlen(c->name) + 1 + strlen(c->value) + 2 +
-			(c->path_from_set ?
-				8 + strlen(c->path) + 2 : 0) +
-			(c->domain_from_set ?
-				10 + strlen(c->domain) + 2 : 0);
+		(c->path_from_set ?
+		 8 + strlen(c->path) + 2 : 0) +
+		(c->domain_from_set ?
+		 10 + strlen(c->domain) + 2 : 0);
 
 	if (*used + max_len >= *alloc) {
 		char *temp = realloc(*buf, *alloc + 4096);
@@ -2144,7 +2483,7 @@ static bool urldb_concat_cookie(struct cookie_internal_data *c, int version,
 		/* Value needs quoting if it contains any separator or if
 		 * it needs preserving from the Set-Cookie header */
 		if (c->value_was_quoted ||
-				strpbrk(c->value, separators) != NULL) {
+		    strpbrk(c->value, separators) != NULL) {
 			sprintf(*buf + *used - 1, "\"%s\"", c->value);
 			*used += 1 + strlen(c->value) + 1;
 		} else {
@@ -2187,9 +2526,17 @@ static bool urldb_concat_cookie(struct cookie_internal_data *c, int version,
 
 /**
  * deletes paths from a cookie.
+ *
+ * \param domain the cookie domain
+ * \param path the cookie path
+ * \param name The cookie name
+ * \param parent The url data of the cookie
  */
-static void urldb_delete_cookie_paths(const char *domain, const char *path,
-		const char *name, struct path_data *parent)
+static void
+urldb_delete_cookie_paths(const char *domain,
+			  const char *path,
+			  const char *name,
+			  struct path_data *parent)
 {
 	struct cookie_internal_data *c;
 	struct path_data *p = parent;
@@ -2199,17 +2546,19 @@ static void urldb_delete_cookie_paths(const char *domain, const char *path,
 	do {
 		for (c = p->cookies; c; c = c->next) {
 			if (strcmp(c->domain, domain) == 0 &&
-					strcmp(c->path, path) == 0 &&
-					strcmp(c->name, name) == 0) {
-				if (c->prev)
+			    strcmp(c->path, path) == 0 &&
+			    strcmp(c->name, name) == 0) {
+				if (c->prev) {
 					c->prev->next = c->next;
-				else
+				} else {
 					p->cookies = c->next;
+				}
 
-				if (c->next)
+				if (c->next) {
 					c->next->prev = c->prev;
-				else
+				} else {
 					p->cookies_end = c->prev;
+				}
 
 				urldb_free_cookie(c);
 
@@ -2235,17 +2584,26 @@ static void urldb_delete_cookie_paths(const char *domain, const char *path,
 
 /**
  * Deletes cookie hosts and their assoicated paths
+ *
+ * \param domain the cookie domain
+ * \param path the cookie path
+ * \param name The cookie name
+ * \param parent The url data of the cookie
  */
-static void urldb_delete_cookie_hosts(const char *domain, const char *path,
-		const char *name, struct host_part *parent)
+static void
+urldb_delete_cookie_hosts(const char *domain,
+			  const char *path,
+			  const char *name,
+			  struct host_part *parent)
 {
 	struct host_part *h;
 	assert(parent);
 
 	urldb_delete_cookie_paths(domain, path, name, &parent->paths);
 
-	for (h = parent->children; h; h = h->next)
+	for (h = parent->children; h; h = h->next) {
 		urldb_delete_cookie_hosts(domain, path, name, h);
+	}
 }
 
 
@@ -2267,9 +2625,10 @@ static void urldb_save_cookie_paths(FILE *fp, struct path_data *parent)
 			struct cookie_internal_data *c;
 
 			for (c = p->cookies; c != NULL; c = c->next) {
-				if (c->expires == -1 || c->expires < now)
+				if (c->expires == -1 || c->expires < now) {
 					/* Skip expired & session cookies */
 					continue;
+				}
 
 				fprintf(fp,
 					"%d\t%s\t%d\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t"
@@ -2282,9 +2641,9 @@ static void urldb_save_cookie_paths(FILE *fp, struct path_data *parent)
 					c->no_destroy, c->name, c->value,
 					c->value_was_quoted,
 					p->scheme ? lwc_string_data(p->scheme) :
-							"unused",
+					"unused",
 					p->url ? nsurl_access(p->url) :
-							"unused",
+					"unused",
 					c->comment ? c->comment : "");
 			}
 		}
@@ -2350,20 +2709,18 @@ static void urldb_destroy_path_node_content(struct path_data *node)
 	struct cookie_internal_data *a, *b;
 	unsigned int i;
 
-	if (node->url != NULL)
+	if (node->url != NULL) {
 		nsurl_unref(node->url);
+	}
 
-	if (node->scheme != NULL)
+	if (node->scheme != NULL) {
 		lwc_string_unref(node->scheme);
+	}
 
 	free(node->segment);
 	for (i = 0; i < node->frag_cnt; i++)
 		free(node->fragment[i]);
 	free(node->fragment);
-
-	if (node->thumb) {
-		guit->bitmap->destroy(node->thumb);
-	}
 
 	free(node->urld.title);
 
@@ -2513,7 +2870,7 @@ void urldb_destroy(void)
 }
 
 
-/* exported interface documented in content/urldb.h */
+/* exported interface documented in netsurf/url_db.h */
 nserror urldb_load(const char *filename)
 {
 #define MAXIMUM_URL_LENGTH 4096
@@ -2528,14 +2885,15 @@ nserror urldb_load(const char *filename)
 
 	assert(filename);
 
-	LOG("Loading URL file %s", filename);
+	NSLOG(netsurf, INFO, "Loading URL file %s", filename);
 
 	if (url_bloom == NULL)
 		url_bloom = bloom_create(BLOOM_SIZE);
 
 	fp = fopen(filename, "r");
 	if (!fp) {
-		LOG("Failed to open file '%s' for reading", filename);
+		NSLOG(netsurf, INFO, "Failed to open file '%s' for reading",
+		      filename);
 		return NSERROR_NOT_FOUND;
 	}
 
@@ -2546,17 +2904,20 @@ nserror urldb_load(const char *filename)
 
 	version = atoi(s);
 	if (version < MIN_URL_FILE_VERSION) {
-		LOG("Unsupported URL file version.");
+		NSLOG(netsurf, INFO, "Unsupported URL file version.");
 		fclose(fp);
 		return NSERROR_INVALID;
 	}
 	if (version > URL_FILE_VERSION) {
-		LOG("Unknown URL file version.");
+		NSLOG(netsurf, INFO, "Unknown URL file version.");
 		fclose(fp);
 		return NSERROR_INVALID;
 	}
 
 	while (fgets(host, sizeof host, fp)) {
+		time_t hsts_expiry = 0;
+		int hsts_include_sub_domains = 0;
+
 		/* get the hostname */
 		length = strlen(host) - 1;
 		host[length] = '\0';
@@ -2574,6 +2935,25 @@ nserror urldb_load(const char *filename)
 			continue;
 		}
 
+		if (version >= 107) {
+			char *p = host;
+			while (*p && *p != ' ') p++;
+			while (*p && *p == ' ') { *p = '\0'; p++; }
+			hsts_include_sub_domains = (*p == '1');
+			while (*p && *p != ' ') p++;
+			while (*p && *p == ' ') p++;
+			nsc_snptimet(p, strlen(p), &hsts_expiry);
+		}
+
+		h = urldb_add_host(host);
+		if (!h) {
+			NSLOG(netsurf, INFO, "Failed adding host: '%s'", host);
+			fclose(fp);
+			return NSERROR_NOMEM;
+		}
+		h->hsts.expires = hsts_expiry;
+		h->hsts.include_sub_domains = hsts_include_sub_domains;
+
 		/* read number of URLs */
 		if (!fgets(s, MAXIMUM_URL_LENGTH, fp))
 			break;
@@ -2581,15 +2961,8 @@ nserror urldb_load(const char *filename)
 
 		/* no URLs => try next host */
 		if (urls == 0) {
-			LOG("No URLs for '%s'", host);
+			NSLOG(netsurf, INFO, "No URLs for '%s'", host);
 			continue;
-		}
-
-		h = urldb_add_host(host);
-		if (!h) {
-			LOG("Failed adding host: '%s'", host);
-			fclose(fp);
-			return NSERROR_NOMEM;
 		}
 
 		/* load the non-corrupt data */
@@ -2621,16 +2994,16 @@ nserror urldb_load(const char *filename)
 			s[length] = '\0';
 
 			if (!strcasecmp(host, "localhost") &&
-					!strcasecmp(scheme, "file"))
+			    !strcasecmp(scheme, "file"))
 				is_file = true;
 
 			snprintf(url, sizeof url, "%s://%s%s%s%s",
-					scheme,
-					/* file URLs have no host */
-					(is_file ? "" : host),
-					(port ? ":" : ""),
-					(port ? ports : ""),
-					s);
+				 scheme,
+				 /* file URLs have no host */
+				 (is_file ? "" : host),
+				 (port ? ":" : ""),
+				 (port ? ports : ""),
+				 s);
 
 			/* TODO: store URLs in pre-parsed state, and make
 			 *       a nsurl_load to generate the nsurl more
@@ -2638,7 +3011,8 @@ nserror urldb_load(const char *filename)
 			 *       Need a nsurl_save too.
 			 */
 			if (nsurl_create(url, &nsurl) != NSERROR_OK) {
-				LOG("Failed inserting '%s'", url);
+				NSLOG(netsurf, INFO, "Failed inserting '%s'",
+				      url);
 				fclose(fp);
 				return NSERROR_NOMEM;
 			}
@@ -2650,19 +3024,21 @@ nserror urldb_load(const char *filename)
 
 			/* Copy and merge path/query strings */
 			if (nsurl_get(nsurl, NSURL_PATH | NSURL_QUERY,
-					&path_query, &len) != NSERROR_OK) {
-				LOG("Failed inserting '%s'", url);
+				      &path_query, &len) != NSERROR_OK) {
+				NSLOG(netsurf, INFO, "Failed inserting '%s'",
+				      url);
 				fclose(fp);
 				return NSERROR_NOMEM;
 			}
 
 			scheme_lwc = nsurl_get_component(nsurl, NSURL_SCHEME);
 			fragment_lwc = nsurl_get_component(nsurl,
-					NSURL_FRAGMENT);
+							   NSURL_FRAGMENT);
 			p = urldb_add_path(scheme_lwc, port, h, path_query,
-					fragment_lwc, nsurl);
+					   fragment_lwc, nsurl);
 			if (!p) {
-				LOG("Failed inserting '%s'", url);
+				NSLOG(netsurf, INFO, "Failed inserting '%s'",
+				      url);
 				fclose(fp);
 				return NSERROR_NOMEM;
 			}
@@ -2676,10 +3052,13 @@ nserror urldb_load(const char *filename)
 			if (p)
 				p->urld.visits = (unsigned int)atoi(s);
 
-			if (!fgets(s, MAXIMUM_URL_LENGTH, fp))
+			/* entry last use time */
+			if (!fgets(s, MAXIMUM_URL_LENGTH, fp)) {
 				break;
-			if (p)
-				p->urld.last_visit = (time_t)atoi(s);
+			}
+			if (p) {
+				nsc_snptimet(s, strlen(s) - 1, &p->urld.last_visit);
+			}
 
 			if (!fgets(s, MAXIMUM_URL_LENGTH, fp))
 				break;
@@ -2703,13 +3082,13 @@ nserror urldb_load(const char *filename)
 	}
 
 	fclose(fp);
-	LOG("Successfully loaded URL file");
+	NSLOG(netsurf, INFO, "Successfully loaded URL file");
 #undef MAXIMUM_URL_LENGTH
 
 	return NSERROR_OK;
 }
 
-/* exported interface documented in content/urldb.h */
+/* exported interface documented in netsurf/url_db.h */
 nserror urldb_save(const char *filename)
 {
 	FILE *fp;
@@ -2719,7 +3098,8 @@ nserror urldb_save(const char *filename)
 
 	fp = fopen(filename, "w");
 	if (!fp) {
-		LOG("Failed to open file '%s' for writing", filename);
+		NSLOG(netsurf, INFO, "Failed to open file '%s' for writing",
+		      filename);
 		return NSERROR_SAVE_FAILED;
 	}
 
@@ -2737,17 +3117,20 @@ nserror urldb_save(const char *filename)
 
 
 /* exported interface documented in content/urldb.h */
-void urldb_set_url_persistence(nsurl *url, bool persist)
+nserror urldb_set_url_persistence(nsurl *url, bool persist)
 {
 	struct path_data *p;
 
 	assert(url);
 
 	p = urldb_find_url(url);
-	if (!p)
-		return;
+	if (!p) {
+		return NSERROR_NOT_FOUND;
+	}
 
 	p->persistent = persist;
+
+	return NSERROR_OK;
 }
 
 
@@ -2778,7 +3161,7 @@ bool urldb_add_url(nsurl *url)
 
 	/* Copy and merge path/query strings */
 	if (nsurl_get(url, NSURL_PATH | NSURL_QUERY, &path_query, &len) !=
-			NSERROR_OK) {
+	    NSERROR_OK) {
 		return false;
 	}
 	assert(path_query != NULL);
@@ -2795,7 +3178,7 @@ bool urldb_add_url(nsurl *url)
 		lwc_string_unref(host);
 
 	} else if (lwc_string_isequal(scheme, corestring_lwc_file, &match) ==
-			lwc_error_ok && match == true) {
+		   lwc_error_ok && match == true) {
 		host_str = "localhost";
 
 	} else {
@@ -2838,54 +3221,69 @@ bool urldb_add_url(nsurl *url)
 
 
 /* exported interface documented in content/urldb.h */
-void urldb_set_url_title(nsurl *url, const char *title)
+nserror urldb_set_url_title(nsurl *url, const char *title)
 {
 	struct path_data *p;
 	char *temp;
 
-	assert(url && title);
+	assert(url);
 
 	p = urldb_find_url(url);
-	if (!p)
-		return;
+	if (p == NULL) {
+		return NSERROR_NOT_FOUND;
+	}
 
-	temp = strdup(title);
-	if (!temp)
-		return;
+	/* copy the parameter if necessary */
+	if (title != NULL) {
+		temp = strdup(title);
+		if (temp == NULL) {
+			return NSERROR_NOMEM;
+		}
+	} else {
+		temp = NULL;
+	}
 
 	free(p->urld.title);
 	p->urld.title = temp;
+
+	return NSERROR_OK;
 }
 
 
 /* exported interface documented in content/urldb.h */
-void urldb_set_url_content_type(nsurl *url, content_type type)
+nserror urldb_set_url_content_type(nsurl *url, content_type type)
 {
 	struct path_data *p;
 
 	assert(url);
 
 	p = urldb_find_url(url);
-	if (!p)
-		return;
+	if (!p) {
+		return NSERROR_NOT_FOUND;
+	}
 
 	p->urld.type = type;
+
+	return NSERROR_OK;
 }
 
 
 /* exported interface documented in content/urldb.h */
-void urldb_update_url_visit_data(nsurl *url)
+nserror urldb_update_url_visit_data(nsurl *url)
 {
 	struct path_data *p;
 
 	assert(url);
 
 	p = urldb_find_url(url);
-	if (!p)
-		return;
+	if (!p) {
+		return NSERROR_NOT_FOUND;
+	}
 
 	p->urld.last_visit = time(NULL);
 	p->urld.visits++;
+
+	return NSERROR_OK;
 }
 
 
@@ -2905,7 +3303,7 @@ void urldb_reset_url_visit_data(nsurl *url)
 }
 
 
-/* exported interface documented in content/urldb.h */
+/* exported interface documented in netsurf/url_db.h */
 const struct url_data *urldb_get_url_data(nsurl *url)
 {
 	struct path_data *p;
@@ -2938,7 +3336,7 @@ nsurl *urldb_get_url(nsurl *url)
 }
 
 
-/* exported interface documented in content/urldb.h */
+/* exported interface documented in netsurf/url_db.h */
 void urldb_set_auth_details(nsurl *url, const char *realm, const char *auth)
 {
 	struct path_data *p, *pi;
@@ -2965,10 +3363,10 @@ void urldb_set_auth_details(nsurl *url, const char *realm, const char *auth)
 	/* Search if given URL belongs to a protection space we already know of. */
 	for (space = h->prot_space; space; space = space->next) {
 		if (!strcmp(space->realm, realm) &&
-				lwc_string_isequal(space->scheme, p->scheme,
-						&match) == lwc_error_ok &&
-				match == true &&
-				space->port == p->port)
+		    lwc_string_isequal(space->scheme, p->scheme,
+				       &match) == lwc_error_ok &&
+		    match == true &&
+		    space->port == p->port)
 			break;
 	}
 
@@ -3001,7 +3399,7 @@ void urldb_set_auth_details(nsurl *url, const char *realm, const char *auth)
 }
 
 
-/* exported interface documented in content/urldb.h */
+/* exported interface documented in netsurf/url_db.h */
 const char *urldb_get_auth_details(nsurl *url, const char *realm)
 {
 	struct path_data *p, *p_cur, *p_top;
@@ -3051,7 +3449,7 @@ const char *urldb_get_auth_details(nsurl *url, const char *realm)
 }
 
 
-/* exported interface documented in content/urldb.h */
+/* exported interface documented in netsurf/url_db.h */
 void urldb_set_cert_permissions(nsurl *url, bool permit)
 {
 	struct path_data *p;
@@ -3099,51 +3497,141 @@ bool urldb_get_cert_permissions(nsurl *url)
 
 
 /* exported interface documented in content/urldb.h */
-bool urldb_set_thumbnail(nsurl *url, struct bitmap *bitmap)
+bool urldb_set_hsts_policy(struct nsurl *url, const char *header)
 {
 	struct path_data *p;
+	struct host_part *h;
+	lwc_string *host;
+	time_t now = time(NULL);
+	http_strict_transport_security *sts;
+	uint32_t max_age = 0;
+	nserror error;
 
 	assert(url);
+
+	host = nsurl_get_component(url, NSURL_HOST);
+	if (host != NULL) {
+		if (urldb__host_is_ip_address(lwc_string_data(host))) {
+			/* Host is IP: ignore */
+			lwc_string_unref(host);
+			return true;
+		} else if (lwc_string_length(host) == 0) {
+			/* Host is blank: ignore */
+			lwc_string_unref(host);
+			return true;
+		}
+
+		lwc_string_unref(host);
+	} else {
+		/* No host part: ignore */
+		return true;
+	}
 
 	/* add url, in case it's missing */
 	urldb_add_url(url);
 
 	p = urldb_find_url(url);
-	if (p == NULL) {
+	if (!p)
 		return false;
+
+	for (; p && p->parent; p = p->parent)
+		/* do nothing */;
+	assert(p);
+
+	h = (struct host_part *)p;
+	if (h->permit_invalid_certs) {
+		/* Transport is tainted: ignore */
+		return true;
 	}
 
-	LOG("Setting bitmap on %s", nsurl_access(url));
-
-	if ((p->thumb) && (p->thumb != bitmap)) {
-		guit->bitmap->destroy(p->thumb);
+	error = http_parse_strict_transport_security(header, &sts);
+	if (error != NSERROR_OK) {
+		/* Parse failed: ignore */
+		return true;
 	}
 
-	p->thumb = bitmap;
+	h->hsts.include_sub_domains =
+		http_strict_transport_security_include_subdomains(sts);
+
+	max_age = http_strict_transport_security_max_age(sts);
+	if (max_age == 0) {
+		h->hsts.expires = 0;
+		h->hsts.include_sub_domains = false;
+	} else if ((time_t) (now + max_age) > h->hsts.expires) {
+		h->hsts.expires = now + max_age;
+	}
+
+	http_strict_transport_security_destroy(sts);
 
 	return true;
 }
 
 
 /* exported interface documented in content/urldb.h */
-struct bitmap *urldb_get_thumbnail(nsurl *url)
+bool urldb_get_hsts_enabled(struct nsurl *url)
 {
 	struct path_data *p;
+	const struct host_part *h;
+	lwc_string *host;
+	time_t now = time(NULL);
 
 	assert(url);
 
+	host = nsurl_get_component(url, NSURL_HOST);
+	if (host != NULL) {
+		if (urldb__host_is_ip_address(lwc_string_data(host))) {
+			/* Host is IP: not enabled */
+			lwc_string_unref(host);
+			return false;
+		} else if (lwc_string_length(host) == 0) {
+			/* Host is blank: not enabled */
+			lwc_string_unref(host);
+			return false;
+		}
+
+		lwc_string_unref(host);
+	} else {
+		/* No host part: not enabled */
+		return false;
+	}
+
+	/* The URL must exist in the db in order to find HSTS policy, since
+	 * we search up the tree from the URL node, and policy from further
+	 * up may also apply. */
+	urldb_add_url(url);
+
 	p = urldb_find_url(url);
 	if (!p)
-		return NULL;
+		return false;
 
-	return p->thumb;
+	for (; p && p->parent; p = p->parent)
+		/* do nothing */;
+	assert(p);
+
+	h = (const struct host_part *)p;
+
+	/* Consult record for this host */
+	if (h->hsts.expires > now) {
+		/* Not expired */
+		return true;
+	}
+
+	/* Consult parent domains */
+	for (h = h->parent; h && h != &db_root; h = h->parent) {
+		if (h->hsts.expires > now && h->hsts.include_sub_domains) {
+			/* Not expired and subdomains included */
+			return true;
+		}
+	}
+
+	return false;
 }
 
 
-/* exported interface documented in content/urldb.h */
-void urldb_iterate_partial(const char *prefix,
-		bool (*callback)(nsurl *url,
-		const struct url_data *data))
+/* exported interface documented in netsurf/url_db.h */
+void
+urldb_iterate_partial(const char *prefix,
+		      bool (*callback)(nsurl *url, const struct url_data *data))
 {
 	char host[256];
 	char buf[260]; /* max domain + "www." */
@@ -3165,7 +3653,7 @@ void urldb_iterate_partial(const char *prefix,
 		/* if there's a slash in the input, then we can
 		 * assume that we're looking for a path */
 		snprintf(host, sizeof host, "%.*s",
-				(int) (slash - prefix), prefix);
+			 (int) (slash - prefix), prefix);
 
 		h = urldb_search_find(tree, host);
 		if (!h) {
@@ -3185,7 +3673,7 @@ void urldb_iterate_partial(const char *prefix,
 		if (h->paths.children) {
 			/* Have paths, iterate them */
 			urldb_iterate_partial_path(&h->paths, slash + 1,
-					callback);
+						   callback);
 		}
 
 	} else {
@@ -3199,17 +3687,17 @@ void urldb_iterate_partial(const char *prefix,
 			/* now look for www.prefix */
 			snprintf(buf, sizeof buf, "www.%s", prefix);
 			if(!urldb_iterate_partial_host(
-					search_trees[ST_DN + 'w' - 'a'],
-					buf, callback))
+				   search_trees[ST_DN + 'w' - 'a'],
+				   buf, callback))
 				return;
 		}
 	}
 }
 
 
-/* exported interface documented in content/urldb.h */
-void urldb_iterate_entries(bool (*callback)(nsurl *url,
-		const struct url_data *data))
+/* exported interface documented in netsurf/url_db.h */
+void
+urldb_iterate_entries(bool (*callback)(nsurl *url, const struct url_data *data))
 {
 	int i;
 
@@ -3217,8 +3705,10 @@ void urldb_iterate_entries(bool (*callback)(nsurl *url,
 
 	for (i = 0; i < NUM_SEARCH_TREES; i++) {
 		if (!urldb_iterate_entries_host(search_trees[i],
-				callback, NULL))
+						callback,
+						NULL)) {
 			break;
+		}
 	}
 }
 
@@ -3232,7 +3722,7 @@ void urldb_iterate_cookies(bool (*callback)(const struct cookie_data *data))
 
 	for (i = 0; i < NUM_SEARCH_TREES; i++) {
 		if (!urldb_iterate_entries_host(search_trees[i],
-				NULL, callback))
+						NULL, callback))
 			break;
 	}
 }
@@ -3285,7 +3775,7 @@ bool urldb_set_cookie(const char *header, nsurl *url, nsurl *referer)
 
 		/* Domain match host names */
 		if (lwc_string_isequal(host, rhost, &match) == lwc_error_ok &&
-				match == false) {
+		    match == false) {
 			const char *hptr;
 			const char *rptr;
 			const char *dot;
@@ -3294,7 +3784,7 @@ bool urldb_set_cookie(const char *header, nsurl *url, nsurl *referer)
 
 			/* Ensure neither host nor rhost are IP addresses */
 			if (urldb__host_is_ip_address(host_data) ||
-					urldb__host_is_ip_address(rhost_data)) {
+			    urldb__host_is_ip_address(rhost_data)) {
 				/* IP address, so no partial match */
 				lwc_string_unref(rhost);
 				goto error;
@@ -3342,8 +3832,8 @@ bool urldb_set_cookie(const char *header, nsurl *url, nsurl *referer)
 
 			/* 3 */
 			if (*hptr == '\0' ||
-				(dot = strchr(hptr + 1, '.')) == NULL ||
-					*(dot + 1) == '\0') {
+			    (dot = strchr(hptr + 1, '.')) == NULL ||
+			    *(dot + 1) == '\0') {
 				lwc_string_unref(rhost);
 				goto error;
 			}
@@ -3356,9 +3846,11 @@ bool urldb_set_cookie(const char *header, nsurl *url, nsurl *referer)
 
 	do {
 		struct cookie_internal_data *c;
-		const char *suffix;
 		char *dot;
 		size_t len;
+#ifdef WITH_NSPSL
+		const char *suffix;
+#endif
 
 		c = urldb_parse_cookie(url, &cur);
 		if (!c) {
@@ -3377,8 +3869,8 @@ bool urldb_set_cookie(const char *header, nsurl *url, nsurl *referer)
 		/* 4.3.2:i Cookie path must be a prefix of URL path */
 		len = strlen(c->path);
 		if (len > lwc_string_length(path) ||
-				strncmp(c->path, lwc_string_data(path),
-						len) != 0) {
+		    strncmp(c->path, lwc_string_data(path),
+			    len) != 0) {
 			urldb_free_cookie(c);
 			goto error;
 		}
@@ -3391,7 +3883,8 @@ bool urldb_set_cookie(const char *header, nsurl *url, nsurl *referer)
 		}
 		suffix = nspsl_getpublicsuffix(dot);
 		if (suffix == NULL) {
-			LOG("domain %s was a public suffix domain", dot);
+			NSLOG(netsurf, INFO,
+			      "domain %s was a public suffix domain", dot);
 			urldb_free_cookie(c);
 			goto error;
 		}
@@ -3448,7 +3941,7 @@ bool urldb_set_cookie(const char *header, nsurl *url, nsurl *referer)
 			}
 
 			if (strcasecmp(lwc_string_data(host) + (hlen - dlen),
-					domain)) {
+				       domain)) {
 				urldb_free_cookie(c);
 				goto error;
 			}
@@ -3530,7 +4023,7 @@ char *urldb_get_cookie(nsurl *url, bool include_http_only)
 	scheme = p->scheme;
 
 	matched_cookies = malloc(matched_cookies_size *
-			sizeof(struct cookie_internal_data *));
+				 sizeof(struct cookie_internal_data *));
 	if (!matched_cookies)
 		return NULL;
 
@@ -3539,8 +4032,8 @@ char *urldb_get_cookie(nsurl *url, bool include_http_only)
 		if (count == matched_cookies_size) {			\
 			struct cookie_internal_data **temp;		\
 			temp = realloc(matched_cookies,			\
-				(matched_cookies_size + 20) *		\
-				sizeof(struct cookie_internal_data *));	\
+				       (matched_cookies_size + 20) *	\
+				       sizeof(struct cookie_internal_data *)); \
 									\
 			if (temp == NULL) {				\
 				free(ret);				\
@@ -3587,10 +4080,10 @@ char *urldb_get_cookie(nsurl *url, bool include_http_only)
 					continue;
 
 				if (c->secure && lwc_string_isequal(
-							q->scheme,
-							corestring_lwc_https,
-							&match) &&
-						match == false)
+					    q->scheme,
+					    corestring_lwc_https,
+					    &match) &&
+				    match == false)
 					/* secure cookie for insecure host.
 					 * ignore */
 					continue;
@@ -3627,10 +4120,10 @@ char *urldb_get_cookie(nsurl *url, bool include_http_only)
 					continue;
 
 				if (c->secure && lwc_string_isequal(
-							q->scheme,
-							corestring_lwc_https,
-							&match) &&
-						match == false)
+					    q->scheme,
+					    corestring_lwc_https,
+					    &match) &&
+				    match == false)
 					/* Secure cookie for insecure server
 					 * => ignore */
 					continue;
@@ -3672,9 +4165,9 @@ char *urldb_get_cookie(nsurl *url, bool include_http_only)
 				continue;
 
 			if (c->secure && lwc_string_isequal(p->scheme,
-						corestring_lwc_https,
-						&match) &&
-					match == false)
+							    corestring_lwc_https,
+							    &match) &&
+			    match == false)
 				/* Secure cookie for insecure server
 				 * => ignore */
 				continue;
@@ -3695,7 +4188,7 @@ char *urldb_get_cookie(nsurl *url, bool include_http_only)
 
 	/* Finally consider domain cookies for hosts which domain match ours */
 	for (h = (const struct host_part *)p; h && h != &db_root;
-			h = h->parent) {
+	     h = h->parent) {
 		for (c = h->paths.cookies; c; c = c->next) {
 			if (c->expires != -1 && c->expires < now)
 				/* cookie has expired => ignore */
@@ -3707,9 +4200,9 @@ char *urldb_get_cookie(nsurl *url, bool include_http_only)
 				continue;
 
 			if (c->secure && lwc_string_isequal(scheme,
-						corestring_lwc_https,
-						&match) &&
-					match == false)
+							    corestring_lwc_https,
+							    &match) &&
+			    match == false)
 				/* secure cookie for insecure host. ignore */
 				continue;
 
@@ -3741,7 +4234,7 @@ char *urldb_get_cookie(nsurl *url, bool include_http_only)
 
 	for (i = 0; i < count; i++) {
 		if (!urldb_concat_cookie(matched_cookies[i], version,
-				&ret_used, &ret_alloc, &ret)) {
+					 &ret_used, &ret_alloc, &ret)) {
 			free(ret);
 			free(matched_cookies);
 			return NULL;
@@ -3776,7 +4269,7 @@ char *urldb_get_cookie(nsurl *url, bool include_http_only)
 
 /* exported interface documented in content/urldb.h */
 void urldb_delete_cookie(const char *domain, const char *path,
-		const char *name)
+			 const char *name)
 {
 	urldb_delete_cookie_hosts(domain, path, name, &db_root);
 }
@@ -3794,24 +4287,24 @@ void urldb_load_cookies(const char *filename)
 	if (!fp)
 		return;
 
-#define FIND_T {							\
-		for (; *p && *p != '\t'; p++)				\
-			; /* do nothing */				\
-		if (p >= end) {						\
-			LOG("Overran input");				\
-			continue;					\
-		}							\
-		*p++ = '\0';						\
-}
+#define FIND_T {				\
+		for (; *p && *p != '\t'; p++)	\
+			; /* do nothing */	\
+		if (p >= end) {			\
+			NSLOG(netsurf, INFO, "Overran input");	\
+			continue;		\
+		}				\
+		*p++ = '\0';			\
+	}
 
-#define SKIP_T {							\
-		for (; *p && *p == '\t'; p++)				\
-			; /* do nothing */				\
-		if (p >= end) {						\
-			LOG("Overran input");				\
-			continue;					\
-		}							\
-}
+#define SKIP_T {				\
+		for (; *p && *p == '\t'; p++)	\
+			; /* do nothing */	\
+		if (p >= end) {			\
+			NSLOG(netsurf, INFO, "Overran input");	\
+			continue;		\
+		}				\
+	}
 
 	while (fgets(s, sizeof s, fp)) {
 		char *p = s, *end = 0,
@@ -3836,8 +4329,9 @@ void urldb_load_cookies(const char *filename)
 			FIND_T; SKIP_T; loaded_cookie_file_version = atoi(p);
 
 			if (loaded_cookie_file_version <
-					MIN_COOKIE_FILE_VERSION) {
-				LOG("Unsupported Cookie file version");
+			    MIN_COOKIE_FILE_VERSION) {
+				NSLOG(netsurf, INFO,
+				      "Unsupported Cookie file version");
 				break;
 			}
 
@@ -3905,7 +4399,7 @@ void urldb_load_cookies(const char *filename)
 		c->no_destroy = no_destroy;
 
 		if (!(c->name && c->value && c->comment &&
-				c->domain && c->path)) {
+		      c->domain && c->path)) {
 			urldb_free_cookie(c);
 			break;
 		}
@@ -3921,7 +4415,7 @@ void urldb_load_cookies(const char *filename)
 				break;
 			}
 			scheme_lwc = nsurl_get_component(url_nsurl,
-					NSURL_SCHEME);
+							 NSURL_SCHEME);
 
 			/* And insert it into database */
 			if (!urldb_insert_cookie(c, scheme_lwc, url_nsurl)) {
@@ -3953,7 +4447,7 @@ void urldb_save_cookies(const char *filename)
 {
 	FILE *fp;
 	int cookie_file_version = max(loaded_cookie_file_version,
-			COOKIE_FILE_VERSION);
+				      COOKIE_FILE_VERSION);
 
 	assert(filename);
 
@@ -3961,19 +4455,18 @@ void urldb_save_cookies(const char *filename)
 	if (!fp)
 		return;
 
-	fprintf(fp, "# >%s\n", filename);
 	fprintf(fp, "# NetSurf cookies file.\n"
-		    "#\n"
-		    "# Lines starting with a '#' are comments, "
-						"blank lines are ignored.\n"
-		    "#\n"
-		    "# All lines prior to \"Version:\t%d\" are discarded.\n"
-		    "#\n"
-		    "# Version\tDomain\tDomain from Set-Cookie\tPath\t"
-			"Path from Set-Cookie\tSecure\tHTTP-Only\tExpires\tLast used\t"
-			"No destroy\tName\tValue\tValue was quoted\tScheme\t"
-			"URL\tComment\n",
-			cookie_file_version);
+		"#\n"
+		"# Lines starting with a '#' are comments, "
+		"blank lines are ignored.\n"
+		"#\n"
+		"# All lines prior to \"Version:\t%d\" are discarded.\n"
+		"#\n"
+		"# Version\tDomain\tDomain from Set-Cookie\tPath\t"
+		"Path from Set-Cookie\tSecure\tHTTP-Only\tExpires\tLast used\t"
+		"No destroy\tName\tValue\tValue was quoted\tScheme\t"
+		"URL\tComment\n",
+		cookie_file_version);
 	fprintf(fp, "Version:\t%d\n", cookie_file_version);
 
 	urldb_save_cookie_hosts(fp, &db_root);
@@ -3982,172 +4475,18 @@ void urldb_save_cookies(const char *filename)
 }
 
 
-/* exported interface documented in content/urldb.h */
+/* exported interface documented in netsurf/url_db.h */
 void urldb_dump(void)
 {
 	int i;
 
 	urldb_dump_hosts(&db_root);
 
-	for (i = 0; i != NUM_SEARCH_TREES; i++)
+	for (i = 0; i != NUM_SEARCH_TREES; i++) {
 		urldb_dump_search(search_trees[i], 0);
-}
-
-
-/* exported interface documented in content/urldb.h */
-struct host_part *urldb_add_host(const char *host)
-{
-	struct host_part *d = (struct host_part *) &db_root, *e;
-	struct search_node *s;
-	char buf[256]; /* 256 bytes is sufficient - domain names are
-			* limited to 255 chars. */
-	char *part;
-
-	assert(host);
-
-	if (urldb__host_is_ip_address(host)) {
-		/* Host is an IP, so simply add as TLD */
-
-		/* Check for existing entry */
-		for (e = d->children; e; e = e->next)
-			if (strcasecmp(host, e->part) == 0)
-				/* found => return it */
-				return e;
-
-		d = urldb_add_host_node(host, d);
-
-		s = urldb_search_insert(search_trees[ST_IP], d);
-		if (!s) {
-			/* failed */
-			d = NULL;
-		} else {
-			search_trees[ST_IP] = s;
-		}
-
-		return d;
 	}
-
-	/* Copy host string, so we can corrupt it */
-	strncpy(buf, host, sizeof buf);
-	buf[sizeof buf - 1] = '\0';
-
-	/* Process FQDN segments backwards */
-	do {
-		part = strrchr(buf, '.');
-		if (!part) {
-			/* last segment */
-			/* Check for existing entry */
-			for (e = d->children; e; e = e->next)
-				if (strcasecmp(buf, e->part) == 0)
-					break;
-
-			if (e) {
-				d = e;
-			} else {
-				d = urldb_add_host_node(buf, d);
-			}
-
-			/* And insert into search tree */
-			if (d) {
-				struct search_node **r;
-
-				r = urldb_get_search_tree_direct(buf);
-				s = urldb_search_insert(*r, d);
-				if (!s) {
-					/* failed */
-					d = NULL;
-				} else {
-					*r = s;
-				}
-			}
-			break;
-		}
-
-		/* Check for existing entry */
-		for (e = d->children; e; e = e->next)
-			if (strcasecmp(part + 1, e->part) == 0)
-				break;
-
-		d = e ? e : urldb_add_host_node(part + 1, d);
-		if (!d)
-			break;
-
-		*part = '\0';
-	} while (1);
-
-	return d;
 }
 
 
-/* exported interface documented in content/urldb.h */
-struct path_data *
-urldb_add_path(lwc_string *scheme,
-	       unsigned int port,
-	       const struct host_part *host,
-	       char *path_query,
-	       lwc_string *fragment,
-	       nsurl *url)
-{
-	struct path_data *d, *e;
-	char *buf = path_query;
-	char *segment, *slash;
-	bool match;
 
-	assert(scheme && host && url);
 
-	d = (struct path_data *) &host->paths;
-
-	/* skip leading '/' */
-	segment = buf;
-	if (*segment == '/')
-		segment++;
-
-	/* Process path segments */
-	do {
-		slash = strchr(segment, '/');
-		if (!slash) {
-			/* last segment */
-			/* look for existing entry */
-			for (e = d->children; e; e = e->next)
-				if (strcmp(segment, e->segment) == 0 &&
-						lwc_string_isequal(scheme,
-						e->scheme, &match) ==
-						lwc_error_ok &&
-						match == true &&
-						e->port == port)
-					break;
-
-			d = e ? urldb_add_path_fragment(e, fragment) :
-					urldb_add_path_node(scheme, port,
-					segment, fragment, d);
-			break;
-		}
-
-		*slash = '\0';
-
-		/* look for existing entry */
-		for (e = d->children; e; e = e->next)
-			if (strcmp(segment, e->segment) == 0 &&
-					lwc_string_isequal(scheme, e->scheme,
-						&match) == lwc_error_ok &&
-						match == true &&
-					e->port == port)
-				break;
-
-		d = e ? e : urldb_add_path_node(scheme, port, segment, NULL, d);
-		if (!d)
-			break;
-
-		segment = slash + 1;
-	} while (1);
-
-	free(path_query);
-
-	if (d && !d->url) {
-		/* Insert defragmented URL */
-		if (nsurl_defragment(url, &d->url) != NSERROR_OK)
-			return NULL;
-	}
-
-	return d;
-}

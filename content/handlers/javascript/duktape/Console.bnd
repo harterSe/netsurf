@@ -34,7 +34,7 @@ write_log_entry(duk_context *ctx, unsigned int group, char logtype)
 	/* spcs... pfx strs... */
 	duk_concat(ctx, duk_get_top(ctx));
 	/* str */
-	LOG("%s", duk_safe_to_string(ctx, 0));
+	NSLOG(netsurf, INFO, "%s", duk_safe_to_string(ctx, 0));
 }
 
 %};
@@ -110,7 +110,7 @@ method Console::time()
 		return 0;
 
 	if (!duk_is_string(ctx, 0)) {
-		duk_error(ctx, DUK_ERR_ERROR, "Console.time() takes a string");
+		return duk_error(ctx, DUK_ERR_ERROR, "Console.time() takes a string");
 	}
 
 	duk_set_top(ctx, 1);
@@ -136,7 +136,7 @@ method Console::timeEnd()
 		return 0;
 
 	if (!duk_is_string(ctx, 0)) {
-		duk_error(ctx, DUK_ERR_ERROR, "Console.time() takes a string");
+		return duk_error(ctx, DUK_ERR_ERROR, "Console.time() takes a string");
 	}
 
 	duk_set_top(ctx, 1);

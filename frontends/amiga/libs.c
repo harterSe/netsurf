@@ -23,6 +23,7 @@
 #include "utils/utils.h"
 #include "utils/log.h"
 
+#include <proto/dos.h>
 #include <proto/exec.h>
 #include <proto/intuition.h>
 #include <proto/utility.h>
@@ -56,11 +57,11 @@
 
 #ifdef __amigaos4__
 #define AMINS_LIB_OPEN(LIB, LIBVER, PREFIX, INTERFACE, INTVER, FAIL)	\
-	LOG("Opening %s v%d", LIB, LIBVER); \
+	NSLOG(netsurf, INFO, "Opening %s v%d", LIB, LIBVER);		\
 	if((PREFIX##Base = (struct PREFIX##Base *)OpenLibrary(LIB, LIBVER))) {	\
 		I##PREFIX = (struct PREFIX##IFace *)GetInterface((struct Library *)PREFIX##Base, INTERFACE, INTVER, NULL);	\
 		if(I##PREFIX == NULL) {	\
-			LOG("Failed to get %s interface v%d of %s", INTERFACE, INTVER, LIB);	\
+			NSLOG(netsurf, INFO, "Failed to get %s interface v%d of %s", INTERFACE, INTVER, LIB); \
 			AMINS_LIB_CLOSE(PREFIX)	\
 			if(FAIL == true) {	\
 				STRPTR error = ASPrintf("Unable to open interface %s v%d\nof %s v%ld (fatal error - not an OS4 lib?)", INTERFACE, INTVER, LIB, LIBVER);	\
@@ -70,7 +71,7 @@
 			}	\
 		}	\
 	} else {	\
-		LOG("Failed to open %s v%d", LIB, LIBVER);	\
+		NSLOG(netsurf, INFO, "Failed to open %s v%d", LIB, LIBVER); \
 		if(FAIL == true) {	\
 			STRPTR error = ASPrintf("Unable to open %s v%ld (fatal error)", LIB, LIBVER);	\
 			ami_misc_fatal_error(error);	\
@@ -90,13 +91,13 @@
 	struct PREFIX##IFace *I##PREFIX = NULL;
 
 #define AMINS_CLASS_OPEN(CLASS, CLASSVER, PREFIX, CLASSGET, NEEDINTERFACE)	\
-	LOG("Opening %s v%d", CLASS, CLASSVER); \
+	NSLOG(netsurf, INFO, "Opening %s v%d", CLASS, CLASSVER);		\
 	if((PREFIX##Base = OpenClass(CLASS, CLASSVER, &PREFIX##Class))) {	\
 		if(NEEDINTERFACE == true) {	\
-			LOG("        + interface");	\
+			NSLOG(netsurf, INFO, "        + interface");	\
 			I##PREFIX = (struct PREFIX##IFace *)GetInterface((struct Library *)PREFIX##Base, "main", 1, NULL);	\
 			if(I##PREFIX == NULL) {	\
-				LOG("Failed to get main interface v1 of %s", CLASS);	\
+				NSLOG(netsurf, INFO, "Failed to get main interface v1 of %s", CLASS); \
 			}	\
 		}	\
 	}	\
@@ -118,10 +119,10 @@
 
 #else
 #define AMINS_LIB_OPEN(LIB, LIBVER, PREFIX, INTERFACE, INTVER, FAIL)	\
-	LOG("Opening %s v%d", LIB, LIBVER); \
+	NSLOG(netsurf, INFO, "Opening %s v%d", LIB, LIBVER);		\
 	if((PREFIX##Base = (struct PREFIX##Base *)OpenLibrary(LIB, LIBVER))) {	\
 	} else {	\
-		LOG("Failed to open %s v%d", LIB, LIBVER);	\
+		NSLOG(netsurf, INFO, "Failed to open %s v%d", LIB, LIBVER); \
 		if(FAIL == true) {	\
 			STRPTR error = ASPrintf("Unable to open %s v%d (fatal error)", LIB, LIBVER);	\
 			ami_misc_fatal_error(error);	\
@@ -137,7 +138,7 @@
 	struct PREFIX##Base *PREFIX##Base = NULL;
 
 #define AMINS_CLASS_OPEN(CLASS, CLASSVER, PREFIX, CLASSGET, NEEDINTERFACE)	\
-	LOG("Opening %s v%d", CLASS, CLASSVER); \
+	NSLOG(netsurf, INFO, "Opening %s v%d", CLASS, CLASSVER);	\
 	if((PREFIX##Base = OpenLibrary(CLASS, CLASSVER))) {	\
 		PREFIX##Class = CLASSGET##_GetClass();	\
 	}	\
@@ -219,6 +220,7 @@ bool ami_libs_open(void)
 	AMINS_LIB_OPEN("asl.library",          37, Asl,         "main",        1, true)
 	AMINS_LIB_OPEN("datatypes.library",    39, DataTypes,   "main",        1, true)
 	AMINS_LIB_OPEN("diskfont.library",     40, Diskfont,    "main",        1, true)
+	AMINS_LIB_OPEN("dos.library",          37, DOS,         "main",        1, true)
 	AMINS_LIB_OPEN("gadtools.library",     37, GadTools,    "main",        1, true)
 	AMINS_LIB_OPEN("graphics.library",     40, Graphics,    "main",        1, true)
 	AMINS_LIB_OPEN("icon.library",         44, Icon,        "main",        1, true)
@@ -254,29 +256,32 @@ bool ami_libs_open(void)
 	 * NB: the last argument should be "true" only if the class also has
 	 * library functions we use.
 	 */
-	AMINS_CLASS_OPEN("arexx.class",                  44, ARexx,         AREXX,         false)
-	AMINS_CLASS_OPEN("images/bevel.image",           44, Bevel,         BEVEL,         false)
-	AMINS_CLASS_OPEN("images/bitmap.image",          44, BitMap,        BITMAP,        false)
-	AMINS_CLASS_OPEN("gadgets/button.gadget",        44, Button,        BUTTON,        false)
-	AMINS_CLASS_OPEN("gadgets/checkbox.gadget",      44, CheckBox,      CHECKBOX,      false)
-	AMINS_CLASS_OPEN("gadgets/chooser.gadget",       44, Chooser,       CHOOSER,       true)
-	AMINS_CLASS_OPEN("gadgets/clicktab.gadget",      44, ClickTab,      CLICKTAB,      true)
-	AMINS_CLASS_OPEN("gadgets/fuelgauge.gadget",     44, FuelGauge,     FUELGAUGE,     false)
-	AMINS_CLASS_OPEN("gadgets/getfile.gadget",       44, GetFile,       GETFILE,       false)
-	AMINS_CLASS_OPEN("gadgets/getfont.gadget",       44, GetFont,       GETFONT,       false)
-	AMINS_CLASS_OPEN("gadgets/getscreenmode.gadget", 44, GetScreenMode, GETSCREENMODE, false)
-	AMINS_CLASS_OPEN("gadgets/integer.gadget",       44, Integer,       INTEGER,       false)
-	AMINS_CLASS_OPEN("images/label.image",           44, Label,         LABEL,         false)
-	AMINS_CLASS_OPEN("gadgets/layout.gadget",        44, Layout,        LAYOUT,        true)
-	AMINS_CLASS_OPEN("gadgets/listbrowser.gadget",   44, ListBrowser,   LISTBROWSER,   true)
-	AMINS_CLASS_OPEN("gadgets/radiobutton.gadget",   44, RadioButton,   RADIOBUTTON,   false)
-	AMINS_CLASS_OPEN("gadgets/scroller.gadget",      44, Scroller,      SCROLLER,      false)
-	AMINS_CLASS_OPEN("gadgets/space.gadget",         44, Space,         SPACE,         false)
-	AMINS_CLASS_OPEN("gadgets/speedbar.gadget",      44, SpeedBar,      SPEEDBAR,      true)
-	AMINS_CLASS_OPEN("gadgets/string.gadget",        44, String,        STRING,        false)
-	AMINS_CLASS_OPEN("window.class",                 44, Window,        WINDOW,        false)
+	AMINS_CLASS_OPEN("arexx.class",                  41, ARexx,         AREXX,         false)
+	AMINS_CLASS_OPEN("images/bevel.image",           41, Bevel,         BEVEL,         false)
+	AMINS_CLASS_OPEN("images/bitmap.image",          41, BitMap,        BITMAP,        false)
+	AMINS_CLASS_OPEN("gadgets/button.gadget",        42, Button,        BUTTON,        false)
+	AMINS_CLASS_OPEN("gadgets/checkbox.gadget",      41, CheckBox,      CHECKBOX,      false)
+	AMINS_CLASS_OPEN("gadgets/chooser.gadget",       41, Chooser,       CHOOSER,       true)
+	AMINS_CLASS_OPEN("gadgets/clicktab.gadget",      42, ClickTab,      CLICKTAB,      true)
+	AMINS_CLASS_OPEN("gadgets/fuelgauge.gadget",     41, FuelGauge,     FUELGAUGE,     false)
+	AMINS_CLASS_OPEN("gadgets/getfile.gadget",       41, GetFile,       GETFILE,       false)
+	AMINS_CLASS_OPEN("gadgets/getfont.gadget",       41, GetFont,       GETFONT,       false)
+	AMINS_CLASS_OPEN("gadgets/getscreenmode.gadget", 41, GetScreenMode, GETSCREENMODE, false)
+	AMINS_CLASS_OPEN("gadgets/integer.gadget",       41, Integer,       INTEGER,       false)
+	AMINS_CLASS_OPEN("images/label.image",           41, Label,         LABEL,         false)
+	AMINS_CLASS_OPEN("gadgets/layout.gadget",        43, Layout,        LAYOUT,        true)
+	AMINS_CLASS_OPEN("gadgets/radiobutton.gadget",   41, RadioButton,   RADIOBUTTON,   false)
+	AMINS_CLASS_OPEN("gadgets/scroller.gadget",      42, Scroller,      SCROLLER,      false)
+	AMINS_CLASS_OPEN("gadgets/space.gadget",         41, Space,         SPACE,         false)
+	AMINS_CLASS_OPEN("gadgets/speedbar.gadget",      41, SpeedBar,      SPEEDBAR,      true)
+	AMINS_CLASS_OPEN("gadgets/string.gadget",        41, String,        STRING,        false)
+	AMINS_CLASS_OPEN("window.class",                 42, Window,        WINDOW,        false)
 
-#ifndef __amigaos4__
+#ifdef __amigaos4__
+	/* BOOPSI classes only required on OS4 */
+	AMINS_CLASS_OPEN("gadgets/listbrowser.gadget",   45, ListBrowser,   LISTBROWSER,   true)
+#else
+	/* BOOPSI classes only required prior to OS4 */
 	PageClass = PAGE_GetClass();
 #endif
 
@@ -302,13 +307,15 @@ void ami_libs_close(void)
 	AMINS_CLASS_CLOSE(Integer)
 	AMINS_CLASS_CLOSE(Label)
 	AMINS_CLASS_CLOSE(Layout)
-	AMINS_CLASS_CLOSE(ListBrowser)
 	AMINS_CLASS_CLOSE(RadioButton)
 	AMINS_CLASS_CLOSE(Scroller)
 	AMINS_CLASS_CLOSE(Space)
 	AMINS_CLASS_CLOSE(SpeedBar)
 	AMINS_CLASS_CLOSE(String)
 	AMINS_CLASS_CLOSE(Window)
+#ifdef __amigaos4__
+	AMINS_CLASS_CLOSE(ListBrowser)
+#endif
 
 	/* Libraries */
 	AMINS_LIB_CLOSE(GuiGFX)
@@ -316,6 +323,7 @@ void ami_libs_close(void)
 	AMINS_LIB_CLOSE(Asl)
 	AMINS_LIB_CLOSE(DataTypes)
 	AMINS_LIB_CLOSE(Diskfont)
+	AMINS_LIB_CLOSE(DOS)
 	AMINS_LIB_CLOSE(GadTools)
 	AMINS_LIB_CLOSE(Graphics)
 	AMINS_LIB_CLOSE(Icon)

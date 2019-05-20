@@ -82,7 +82,8 @@ nserror amiga_plugin_hack_init(void)
 
 		if(node)
 		{
-			LOG("plugin_hack registered %s", lwc_string_data(type));
+			NSLOG(netsurf, INFO, "plugin_hack registered %s",
+			      lwc_string_data(type));
 
 			error = content_factory_register_handler(
 				lwc_string_data(type), 
@@ -123,7 +124,7 @@ nserror amiga_plugin_hack_create(const content_handler *handler,
 
 bool amiga_plugin_hack_convert(struct content *c)
 {
-	LOG("amiga_plugin_hack_convert");
+	NSLOG(netsurf, INFO, "amiga_plugin_hack_convert");
 
 	content_set_ready(c);
 	content_set_done(c);
@@ -137,7 +138,7 @@ void amiga_plugin_hack_destroy(struct content *c)
 {
 	amiga_plugin_hack_content *plugin = (amiga_plugin_hack_content *) c;
 
-	LOG("amiga_plugin_hack_destroy %p", plugin);
+	NSLOG(netsurf, INFO, "amiga_plugin_hack_destroy %p", plugin);
 
 	return;
 }
@@ -150,18 +151,29 @@ bool amiga_plugin_hack_redraw(struct content *c,
 		.fill_type = PLOT_OP_TYPE_SOLID,
 		.fill_colour = 0xffffff,
 		.stroke_colour = 0x000000,
-		.stroke_width = 1,
+		.stroke_width = plot_style_int_to_fixed(1),
 	};
+	struct rect rect;
+	nserror res;
 
-	LOG("amiga_plugin_hack_redraw");
+	NSLOG(netsurf, INFO, "amiga_plugin_hack_redraw");
 
-	ctx->plot->rectangle(data->x, data->y, data->x + data->width,
-			data->y + data->height, &pstyle);
+	rect.x0 = data->x;
+	rect.y0 = data->y;
+	rect.x1 = data->x + data->width;
+	rect.y1 = data->y + data->height;
 
-	return ctx->plot->text(data->x, data->y+20,
-			lwc_string_data(content__get_mime_type(c)),
-			lwc_string_length(content__get_mime_type(c)),
-			plot_style_font);
+	ctx->plot->rectangle(ctx, &pstyle, &rect);
+
+	res = ctx->plot->text(ctx,
+			      plot_style_font,
+			      data->x, data->y+20,
+			      lwc_string_data(content__get_mime_type(c)),
+			      lwc_string_length(content__get_mime_type(c)));
+	if (res != NSERROR_OK) {
+		return false;
+	}
+	return true;
 }
 
 /**
@@ -176,7 +188,8 @@ bool amiga_plugin_hack_redraw(struct content *c,
 void amiga_plugin_hack_open(struct content *c, struct browser_window *bw,
 	struct content *page, struct object_params *params)
 {
-	LOG("amiga_plugin_hack_open %s", nsurl_access(content_get_url(c)));
+	NSLOG(netsurf, INFO, "amiga_plugin_hack_open %s",
+	      nsurl_access(content_get_url(c)));
 
 	if(c)
 	{
@@ -190,13 +203,13 @@ void amiga_plugin_hack_open(struct content *c, struct browser_window *bw,
 
 void amiga_plugin_hack_close(struct content *c)
 {
-	LOG("amiga_plugin_hack_close");
+	NSLOG(netsurf, INFO, "amiga_plugin_hack_close");
 	return;
 }
 
 void amiga_plugin_hack_reformat(struct content *c, int width, int height)
 {
-	LOG("amiga_plugin_hack_reformat");
+	NSLOG(netsurf, INFO, "amiga_plugin_hack_reformat");
 
 	c->width = width;
 	c->height = height;
@@ -209,7 +222,7 @@ nserror amiga_plugin_hack_clone(const struct content *old, struct content **newc
 	amiga_plugin_hack_content *plugin;
 	nserror error;
 
-	LOG("amiga_plugin_hack_clone");
+	NSLOG(netsurf, INFO, "amiga_plugin_hack_clone");
 
 	plugin = calloc(1, sizeof(amiga_plugin_hack_content));
 	if (plugin == NULL)
@@ -256,7 +269,7 @@ void amiga_plugin_hack_execute(struct hlcache_handle *c)
 	if(full_cmd)
 	{
 #ifdef __amigaos4__
-		LOG("Attempting to execute %s", full_cmd);
+		NSLOG(netsurf, INFO, "Attempting to execute %s", full_cmd);
 
 		in = Open("NIL:", MODE_OLDFILE);
 		out = Open("NIL:", MODE_NEWFILE);

@@ -25,7 +25,7 @@
 #include "utils/log.h"
 #include "utils/nsoption.h"
 #include "netsurf/mouse.h"
-#include "desktop/plot_style.h"
+#include "netsurf/plot_style.h"
 
 #include "atari/gui.h"
 #include "atari/bitmap.h"
@@ -154,11 +154,12 @@ static FT_Error ft_face_requester(FTC_FaceID face_id, FT_Library  library, FT_Po
 
 	error = FT_New_Face(library, ft_face->fontfile, ft_face->index, face);
 	if (error) {
-		LOG("Could not find font (code %d)\n", error);
+		NSLOG(netsurf, INFO, "Could not find font (code %d)\n", error);
 	} else {
 		error = FT_Select_Charmap(*face, FT_ENCODING_UNICODE);
 		if (error) {
-			LOG("Could not select charmap (code %d)\n", error);
+			NSLOG(netsurf, INFO,
+			      "Could not select charmap (code %d)\n", error);
 		} else {
 			for (cidx = 0; cidx < (*face)->num_charmaps; cidx++) {
 				if ((*face)->charmap == (*face)->charmaps[cidx]) {
@@ -168,7 +169,7 @@ static FT_Error ft_face_requester(FTC_FaceID face_id, FT_Library  library, FT_Po
 			}
 		}
 	}
-	LOG("Loaded face from %s\n", ft_face->fontfile);
+	NSLOG(netsurf, INFO, "Loaded face from %s\n", ft_face->fontfile);
 	return error;
 }
 
@@ -190,7 +191,9 @@ ft_new_face(const char *option, const char *resname, const char *fontfile)
 	}
 	error = FTC_Manager_LookupFace(ft_cmanager, (FTC_FaceID)newf, &aface);
 	if (error) {
-		LOG("Could not find font face %s (code %d)\n", fontfile, error);
+		NSLOG(netsurf, INFO,
+		      "Could not find font face %s (code %d)\n", fontfile,
+		      error);
 		free(newf);
 		newf = font_faces[FONT_FACE_DEFAULT]; /* use default */
 	}
@@ -247,7 +250,7 @@ static void ft_fill_scalar(const plot_font_style_t *fstyle, FTC_Scaler srec)
 
 	srec->face_id = (FTC_FaceID)font_faces[selected_face];
 
-	srec->width = srec->height = (fstyle->size * 64) / FONT_SIZE_SCALE;
+	srec->width = srec->height = (fstyle->size * 64) / PLOT_STYLE_SCALE;
 	srec->pixel = 0;
 
 	/* calculate x/y resolution, when browser_get_dpi() isn't available */
@@ -262,13 +265,14 @@ static FT_Glyph ft_getglyph(const plot_font_style_t *fstyle, uint32_t ucs4)
 	FT_UInt glyph_index;
 	FTC_ScalerRec srec;
 	FT_Glyph glyph;
-	FT_Error error;
+	//FT_Error error;
 	ftc_faceid_t *ft_face;
 
 	ft_fill_scalar(fstyle, &srec);
 	ft_face = (ftc_faceid_t *)srec.face_id;
 	glyph_index = FTC_CMapCache_Lookup(ft_cmap_cache, srec.face_id, ft_face->cidx, ucs4);
-	error = FTC_ImageCache_LookupScaler(ft_image_cache,
+	//error =
+	FTC_ImageCache_LookupScaler(ft_image_cache,
 					    &srec,
 					    FT_LOAD_RENDER |
 					    FT_LOAD_FORCE_AUTOHINT |
@@ -291,7 +295,8 @@ static bool ft_font_init(void)
 	/* freetype library initialise */
 	error = FT_Init_FreeType( &library );
 	if (error) {
-		LOG("Freetype could not initialised (code %d)\n", error);
+		NSLOG(netsurf, INFO,
+		      "Freetype could not initialised (code %d)\n", error);
 		return false;
 	}
 
@@ -310,7 +315,9 @@ static bool ft_font_init(void)
 				NULL,
 				&ft_cmanager);
 	if (error) {
-		LOG("Freetype could not initialise cache manager (code %d)\n", error);
+		NSLOG(netsurf, INFO,
+		      "Freetype could not initialise cache manager (code %d)\n",
+		      error);
 		FT_Done_FreeType(library);
 		return false;
 	}
@@ -329,7 +336,8 @@ static bool ft_font_init(void)
 							FONT_PKG_PATH FONT_FILE_SANS
 										);
 	if (font_faces[FONT_FACE_SANS_SERIF] == NULL) {
-		LOG("Could not find default font (code %d)\n", error);
+		NSLOG(netsurf, INFO,
+		      "Could not find default font (code %d)\n", error);
 		FTC_Manager_Done(ft_cmanager);
 		FT_Done_FreeType(library);
 		return false;
@@ -687,7 +695,7 @@ int ctor_font_plotter_freetype( FONT_PLOTTER self )
 		self->draw_glyph = draw_glyph8;
 	}
 
-	LOG("%s: %s\n", (char *)__FILE__, __FUNCTION__);
+	NSLOG(netsurf, INFO, "%s: %s\n", (char *)__FILE__, __FUNCTION__);
 	if( !init ) {
 		ft_font_init();
 		fontbmp = atari_bitmap_create(48, 48, 0);

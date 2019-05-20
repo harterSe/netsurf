@@ -95,7 +95,8 @@ void ro_gui_iconbar_initialise(void)
 		{ "!netsurf" } } };
 	error = xwimp_create_icon(&icon, 0);
 	if (error) {
-		LOG("xwimp_create_icon: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_create_icon: 0x%x: %s",
+		      error->errnum, error->errmess);
 		die(error->errmess);
 	}
 
@@ -150,8 +151,9 @@ bool ro_gui_iconbar_click(wimp_pointer *pointer)
 
 	case wimp_CLICK_ADJUST:
 		xosbyte1(osbyte_SCAN_KEYBOARD, 0 ^ 0x80, 0, &key_down);
-		if (key_down == 0)
-			ro_gui_hotlist_open();
+		if (key_down == 0) {
+			ro_gui_hotlist_present();
+		}
 		break;
 	}
 
@@ -224,20 +226,21 @@ bool ro_gui_iconbar_menu_select(wimp_w w, wimp_i i, wimp_menu *menu,
 		ro_gui_dialog_open_persistent(NULL, dialog_openurl, true);
 		return true;
 	case HOTLIST_SHOW:
-		ro_gui_hotlist_open();
+		ro_gui_hotlist_present();
 		return true;
 	case HISTORY_SHOW_GLOBAL:
-		ro_gui_global_history_open();
+		ro_gui_global_history_present();
 		return true;
 	case COOKIES_SHOW:
-		ro_gui_cookies_open();
+		ro_gui_cookies_present();
 		return true;
 	case CHOICES_SHOW:
 		ro_gui_configure_show();
 		return true;
 	case APPLICATION_QUIT:
 		if (ro_gui_prequit()) {
-			LOG("QUIT in response to user request");
+			NSLOG(netsurf, INFO,
+			      "QUIT in response to user request");
 			riscos_done = true;
 		}
 		return true;

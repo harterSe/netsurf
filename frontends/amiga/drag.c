@@ -110,6 +110,8 @@ void ami_drag_save(struct Window *win)
 	ULONG which = WBO_NONE, type;
 	char path[1025], dpath[1025];
 
+	path[0] = 0; /* ensure path is terminated */
+
 	ami_drag_icon_close(NULL);
 	ami_autoscroll = true;
 
@@ -186,7 +188,8 @@ void ami_drag_save(struct Window *win)
 		break;
 
 		default:
-			LOG("Unsupported drag save operation %d", drag_save);
+			NSLOG(netsurf, INFO,
+			      "Unsupported drag save operation %d", drag_save);
 		break;
 	}
 

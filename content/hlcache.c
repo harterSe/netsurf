@@ -16,8 +16,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/** \file
- * High-level resource cache (implementation)
+/**
+ * \file
+ * High-level resource cache implementation.
  */
 
 #include <assert.h>
@@ -86,7 +87,7 @@ struct hlcache_s {
 	/** Ring of retrieval contexts */
 	hlcache_retrieval_ctx *retrieval_ctx_ring;
 
-	/* statsistics */
+	/* statistics */
 	unsigned int hit_count;
 	unsigned int miss_count;
 };
@@ -178,20 +179,23 @@ static bool hlcache_type_is_acceptable(lwc_string *mime_type,
  * \param pw	Pointer to private data (hlcache_handle)
  */
 static void hlcache_content_callback(struct content *c, content_msg msg,
-		union content_msg_data data, void *pw)
+		const union content_msg_data *data, void *pw)
 {
 	hlcache_handle *handle = pw;
-	hlcache_event event;
 	nserror error = NSERROR_OK;
+	hlcache_event event = {
+		.type = msg,
+	};
 
-	event.type = msg;
-	event.data = data;
+	if (data != NULL) {
+		event.data = *data;
+	}
 
 	if (handle->cb != NULL)
 		error = handle->cb(handle, &event, handle->pw);
 
 	if (error != NSERROR_OK)
-		LOG("Error in callback: %d", error);
+		NSLOG(netsurf, INFO, "Error in callback: %d", error);
 }
 
 /**
@@ -420,7 +424,7 @@ static nserror hlcache_llcache_callback(llcache_handle *handle,
 
 	switch (event->type) {
 	case LLCACHE_EVENT_HAD_HEADERS:
-		error = mimesniff_compute_effective_type(handle, NULL, 0,
+		error = mimesniff_compute_effective_type(llcache_handle_get_header(handle, "Content-Type"), NULL, 0,
 				ctx->flags & HLCACHE_RETRIEVE_SNIFF_TYPE,
 				ctx->accepted_types == CONTENT_IMAGE,
 				&effective_type);
@@ -443,7 +447,7 @@ static nserror hlcache_llcache_callback(llcache_handle *handle,
 
 		break;
 	case LLCACHE_EVENT_HAD_DATA:
-		error = mimesniff_compute_effective_type(handle,
+		error = mimesniff_compute_effective_type(llcache_handle_get_header(handle, "Content-Type"),
 				event->data.data.buf, event->data.data.len,
 				ctx->flags & HLCACHE_RETRIEVE_SNIFF_TYPE,
 				ctx->accepted_types == CONTENT_IMAGE,
@@ -462,7 +466,7 @@ static nserror hlcache_llcache_callback(llcache_handle *handle,
 	case LLCACHE_EVENT_DONE:
 		/* DONE event before we could determine the effective MIME type.
 		 */
-		error = mimesniff_compute_effective_type(handle,
+		error = mimesniff_compute_effective_type(llcache_handle_get_header(handle, "Content-Type"),
 				NULL, 0, false, false, &effective_type);
 		if (error == NSERROR_OK || error == NSERROR_NOT_FOUND) {
 			error = hlcache_migrate_ctx(ctx, effective_type);
@@ -562,7 +566,8 @@ void hlcache_finalise(void)
 		num_contents++;
 	}
 
-	LOG("%d contents remain before cache drain", num_contents);
+	NSLOG(netsurf, INFO, "%d contents remain before cache drain",
+	      num_contents);
 
 	/* Drain cache */
 	do {
@@ -576,14 +581,17 @@ void hlcache_finalise(void)
 		}
 	} while (num_contents > 0 && num_contents != prev_contents);
 
-	LOG("%d contents remaining:", num_contents);
+	NSLOG(netsurf, INFO, "%d contents remaining:", num_contents);
 	for (entry = hlcache->content_list; entry != NULL; entry = entry->next) {
 		hlcache_handle entry_handle = { entry, NULL, NULL };
 
 		if (entry->content != NULL) {
-			LOG("	%p : %s (%d users)", entry, nsurl_access(hlcache_handle_get_url(&entry_handle)), content_count_users(entry->content));
+			NSLOG(netsurf, INFO, "	%p : %s (%d users)",
+			      entry,
+			      nsurl_access(hlcache_handle_get_url(&entry_handle)),
+			      content_count_users(entry->content));
 		} else {
-			LOG("	%p", entry);
+			NSLOG(netsurf, INFO, "	%p", entry);
 		}
 	}
 
@@ -611,12 +619,13 @@ void hlcache_finalise(void)
 		hlcache->retrieval_ctx_ring = NULL;
 	}
 
-	LOG("hit/miss %d/%d", hlcache->hit_count, hlcache->miss_count);
+	NSLOG(netsurf, INFO, "hit/miss %d/%d", hlcache->hit_count,
+	      hlcache->miss_count);
 
 	free(hlcache);
 	hlcache = NULL;
 
-	LOG("Finalising low-level cache");
+	NSLOG(netsurf, INFO, "Finalising low-level cache");
 	llcache_finalise();
 }
 
@@ -665,12 +674,12 @@ nserror hlcache_handle_retrieve(nsurl *url, uint32_t flags,
 			hlcache_llcache_callback, ctx,
 			&ctx->llcache);
 	if (error != NSERROR_OK) {
-		/* error retriving handle so free context and return error */
+		/* error retrieving handle so free context and return error */
 		free((char *) ctx->child.charset);
 		free(ctx->handle);
 		free(ctx);
 	} else {
-		/* successfuly started fetch so add new context to list */
+		/* successfully started fetch so add new context to list */
 		RING_INSERT(hlcache->retrieval_ctx_ring, ctx);
 
 		*result = ctx->handle;

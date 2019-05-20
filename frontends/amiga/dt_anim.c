@@ -46,7 +46,6 @@
 #include "amiga/bitmap.h"
 #include "amiga/filetype.h"
 #include "amiga/datatypes.h"
-#include "amiga/misc.h"
 #include "amiga/plotters.h"
 
 typedef struct amiga_dt_anim_content {
@@ -163,7 +162,7 @@ nserror amiga_dt_anim_create(const content_handler *handler,
 
 bool amiga_dt_anim_convert(struct content *c)
 {
-	LOG("amiga_dt_anim_convert");
+	NSLOG(netsurf, INFO, "amiga_dt_anim_convert");
 
 	amiga_dt_anim_content *plugin = (amiga_dt_anim_content *) c;
 	union content_msg_data msg_data;
@@ -191,7 +190,7 @@ bool amiga_dt_anim_convert(struct content *c)
 			plugin->bitmap = amiga_bitmap_create(width, height, bm_flags);
 			if (!plugin->bitmap) {
 				msg_data.error = messages_get("NoMemory");
-				content_broadcast(c, CONTENT_MSG_ERROR, msg_data);
+				content_broadcast(c, CONTENT_MSG_ERROR, &msg_data);
 				return false;
 			}
 
@@ -216,7 +215,7 @@ bool amiga_dt_anim_convert(struct content *c)
 #else
 #warning FIXME: Need to use a different blitter function for OS3!
 #endif
-				FreeVec(clut);
+				free(clut);
 
 				adt_frame.MethodID = ADTM_UNLOADFRAME;
 				IDoMethodA(plugin->dto, (Msg)&adt_frame);
@@ -247,7 +246,7 @@ void amiga_dt_anim_destroy(struct content *c)
 {
 	amiga_dt_anim_content *plugin = (amiga_dt_anim_content *) c;
 
-	LOG("amiga_dt_anim_destroy");
+	NSLOG(netsurf, INFO, "amiga_dt_anim_destroy");
 
 	if (plugin->bitmap != NULL)
 		amiga_bitmap_destroy(plugin->bitmap);
@@ -264,15 +263,18 @@ bool amiga_dt_anim_redraw(struct content *c,
 	amiga_dt_anim_content *plugin = (amiga_dt_anim_content *) c;
 	bitmap_flags_t flags = BITMAPF_NONE;
 
-	LOG("amiga_dt_anim_redraw");
+	NSLOG(netsurf, INFO, "amiga_dt_anim_redraw");
 
 	if (data->repeat_x)
 		flags |= BITMAPF_REPEAT_X;
 	if (data->repeat_y)
 		flags |= BITMAPF_REPEAT_Y;
 
-	return ctx->plot->bitmap(data->x, data->y, data->width, data->height,
-			plugin->bitmap, data->background_colour, flags);
+	return (ctx->plot->bitmap(ctx, plugin->bitmap,
+				  data->x, data->y,
+				  data->width, data->height,
+				  data->background_colour,
+				  flags) == NSERROR_OK);
 }
 
 /**
@@ -288,20 +290,20 @@ bool amiga_dt_anim_redraw(struct content *c,
 void amiga_dt_anim_open(struct content *c, struct browser_window *bw,
 	struct content *page, struct object_params *params)
 {
-	LOG("amiga_dt_anim_open");
+	NSLOG(netsurf, INFO, "amiga_dt_anim_open");
 
 	return;
 }
 
 void amiga_dt_anim_close(struct content *c)
 {
-	LOG("amiga_dt_anim_close");
+	NSLOG(netsurf, INFO, "amiga_dt_anim_close");
 	return;
 }
 
 void amiga_dt_anim_reformat(struct content *c, int width, int height)
 {
-	LOG("amiga_dt_anim_reformat");
+	NSLOG(netsurf, INFO, "amiga_dt_anim_reformat");
 	return;
 }
 
@@ -310,7 +312,7 @@ nserror amiga_dt_anim_clone(const struct content *old, struct content **newc)
 	amiga_dt_anim_content *plugin;
 	nserror error;
 
-	LOG("amiga_dt_anim_clone");
+	NSLOG(netsurf, INFO, "amiga_dt_anim_clone");
 
 	plugin = calloc(1, sizeof(amiga_dt_anim_content));
 	if (plugin == NULL)
@@ -344,7 +346,7 @@ content_type amiga_dt_anim_content_type(void)
 static APTR ami_colormap_to_clut(struct ColorMap *cmap)
 {
 	int i;
-	UBYTE *clut = ami_misc_allocvec_clear(256 * 4, 0); /* NB: Was not MEMF_PRIVATE */
+	UBYTE *clut = calloc(1, 256 * 4);
 	ULONG colr[256 * 4];
 
 	if(!clut) return NULL;

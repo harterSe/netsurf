@@ -16,9 +16,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/** \file
- * Content for image/x-riscos-sprite (librosprite implementation).
- *
+/**
+ * \file
+ * librosprite implementation for content image/x-riscos-sprite
  */
 
 #include <stdbool.h>
@@ -48,14 +48,14 @@ typedef struct nssprite_content {
 #define ERRCHK(x) do { \
 	rosprite_error err = x; \
 	if (err == ROSPRITE_EOF) { \
-		LOG("Got ROSPRITE_EOF when loading sprite file"); \
-		return false; \
+		NSLOG(netsurf, INFO, "Got ROSPRITE_EOF when loading sprite file"); \
+		goto ro_sprite_error; \
 	} else if (err == ROSPRITE_BADMODE) { \
-		LOG("Got ROSPRITE_BADMODE when loading sprite file"); \
-		return false; \
+		NSLOG(netsurf, INFO, "Got ROSPRITE_BADMODE when loading sprite file"); \
+		goto ro_sprite_error; \
 	} else if (err == ROSPRITE_OK) { \
 	} else { \
-		return false; \
+		goto ro_sprite_error; \
 	} \
 } while(0)
 
@@ -95,9 +95,8 @@ static nserror nssprite_create(const content_handler *handler,
 static bool nssprite_convert(struct content *c)
 {
 	nssprite_content *nssprite = (nssprite_content *) c;
-	union content_msg_data msg_data;
 
-	struct rosprite_mem_context* ctx;
+	struct rosprite_mem_context* ctx = NULL;
 
 	const char *data;
 	unsigned long size;
@@ -118,14 +117,12 @@ static bool nssprite_convert(struct content *c)
 
 	nssprite->bitmap = guit->bitmap->create(sprite->width, sprite->height, BITMAP_NEW);
 	if (!nssprite->bitmap) {
-		msg_data.error = messages_get("NoMemory");
-		content_broadcast(c, CONTENT_MSG_ERROR, msg_data);
+		content_broadcast_errorcode(c, NSERROR_NOMEM);
 		return false;
 	}
 	uint32_t* imagebuf = (uint32_t *)guit->bitmap->get_buffer(nssprite->bitmap);
 	if (!imagebuf) {
-		msg_data.error = messages_get("NoMemory");
-		content_broadcast(c, CONTENT_MSG_ERROR, msg_data);
+		content_broadcast_errorcode(c, NSERROR_NOMEM);
 		return false;
 	}
 	unsigned char *spritebuf = (unsigned char *)sprite->image;
@@ -163,6 +160,14 @@ static bool nssprite_convert(struct content *c)
 	content_set_status(c, ""); /* Done: update status bar */
 
 	return true;
+
+ro_sprite_error:
+	if (ctx != NULL) {
+		rosprite_destroy_mem_context(ctx);
+	}
+	content_broadcast_errorcode(c, NSERROR_SPRITE_ERROR);
+
+	return false;
 }
 
 
@@ -185,19 +190,28 @@ static void nssprite_destroy(struct content *c)
  * Redraw a CONTENT_SPRITE.
  */
 
-static bool nssprite_redraw(struct content *c, struct content_redraw_data *data,
-		const struct rect *clip, const struct redraw_context *ctx)
+static bool
+nssprite_redraw(struct content *c,
+		struct content_redraw_data *data,
+		const struct rect *clip,
+		const struct redraw_context *ctx)
 {
 	nssprite_content *nssprite = (nssprite_content *) c;
 	bitmap_flags_t flags = BITMAPF_NONE;
 
-	if (data->repeat_x)
+	if (data->repeat_x) {
 		flags |= BITMAPF_REPEAT_X;
-	if (data->repeat_y)
+	}
+	if (data->repeat_y) {
 		flags |= BITMAPF_REPEAT_Y;
+	}
 
-	return ctx->plot->bitmap(data->x, data->y, data->width, data->height,
-			nssprite->bitmap, data->background_colour, flags);
+	return (ctx->plot->bitmap(ctx,
+				  nssprite->bitmap,
+				  data->x, data->y,
+				  data->width, data->height,
+				  data->background_colour,
+				  flags) == NSERROR_OK);
 }
 
 

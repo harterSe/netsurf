@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <png.h>
 
+#include "netsurf/inttypes.h"
 #include "utils/utils.h"
 #include "utils/log.h"
 #include "utils/messages.h"
@@ -73,7 +74,7 @@ enum nspng_cberr {
  */
 static void nspng_warning(png_structp png_ptr, png_const_charp warning_message)
 {
-	LOG("%s", warning_message);
+	NSLOG(netsurf, INFO, "%s", warning_message);
 }
 
 /**
@@ -81,7 +82,7 @@ static void nspng_warning(png_structp png_ptr, png_const_charp warning_message)
  */
 static void nspng_error(png_structp png_ptr, png_const_charp error_message)
 {
-	LOG("%s", error_message);
+	NSLOG(netsurf, INFO, "%s", error_message);
 	longjmp(png_jmpbuf(png_ptr), CBERR_LIBPNG);
 }
 
@@ -174,10 +175,8 @@ static void info_callback(png_structp png_s, png_infop info)
 	png_c->rowbytes = png_get_rowbytes(png_s, info);
 	png_c->interlace = (interlace == PNG_INTERLACE_ADAM7);
 
-	LOG("size %li * %li, rowbytes %" PRIsizet, 
-	    (unsigned long)width,
-	    (unsigned long)height,
-	    png_c->rowbytes);
+	NSLOG(netsurf, INFO, "size %li * %li, rowbytes %"PRIsizet,
+	      (unsigned long)width, (unsigned long)height, png_c->rowbytes);
 }
 
 static void row_callback(png_structp png_s, png_bytep new_row,
@@ -239,14 +238,11 @@ static void end_callback(png_structp png_s, png_infop info)
 
 static nserror nspng_create_png_data(nspng_content *png_c)
 {
-	union content_msg_data msg_data;
-
 	png_c->bitmap = NULL;
 
 	png_c->png = png_create_read_struct(PNG_LIBPNG_VER_STRING, 0, 0, 0);
 	if (png_c->png == NULL) {
-		msg_data.error = messages_get("NoMemory");
-		content_broadcast(&png_c->base, CONTENT_MSG_ERROR, msg_data);
+		content_broadcast_errorcode(&png_c->base, NSERROR_NOMEM);
 		return NSERROR_NOMEM;
 	}
 
@@ -256,19 +252,17 @@ static nserror nspng_create_png_data(nspng_content *png_c)
 	if (png_c->info == NULL) {
 		png_destroy_read_struct(&png_c->png, &png_c->info, 0);
 
-		msg_data.error = messages_get("NoMemory");
-		content_broadcast(&png_c->base, CONTENT_MSG_ERROR, msg_data);
+		content_broadcast_errorcode(&png_c->base, NSERROR_NOMEM);
 		return NSERROR_NOMEM;
 	}
 
 	if (setjmp(png_jmpbuf(png_c->png))) {
 		png_destroy_read_struct(&png_c->png, &png_c->info, 0);
-		LOG("Failed to set callbacks");
+		NSLOG(netsurf, INFO, "Failed to set callbacks");
 		png_c->png = NULL;
 		png_c->info = NULL;
 
-		msg_data.error = messages_get("PNGError");
-		content_broadcast(&png_c->base, CONTENT_MSG_ERROR, msg_data);
+		content_broadcast_errorcode(&png_c->base, NSERROR_PNG_ERROR);
 		return NSERROR_NOMEM;
 	}
 
@@ -322,7 +316,6 @@ static bool nspng_process_data(struct content *c, const char *data,
 			       unsigned int size)
 {
 	nspng_content *png_c = (nspng_content *)c;
-	union content_msg_data msg_data;
 	volatile bool ret = true;
 
 	if (png_c->no_process_data) {
@@ -355,14 +348,14 @@ static bool nspng_process_data(struct content *c, const char *data,
 			 * up png conversion and signal the content
 			 * error 
 			 */
-			LOG("Fatal PNG error during header, error content");
+			NSLOG(netsurf, INFO,
+			      "Fatal PNG error during header, error content");
 
 			png_destroy_read_struct(&png_c->png, &png_c->info, 0);
 			png_c->png = NULL;
 			png_c->info = NULL;
 
-			msg_data.error = messages_get("PNGError");
-			content_broadcast(c, CONTENT_MSG_ERROR, msg_data);
+			content_broadcast_errorcode(c, NSERROR_PNG_ERROR);
 
 			ret = false;
 

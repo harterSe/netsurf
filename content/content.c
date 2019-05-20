@@ -21,11 +21,11 @@
  * Content handling implementation.
  */
 
-#include <inttypes.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <nsutils/time.h>
 
-#include "utils/utils.h"
+#include "netsurf/inttypes.h"
 #include "utils/log.h"
 #include "utils/messages.h"
 #include "netsurf/browser_window.h"
@@ -73,7 +73,8 @@ nserror content__init(struct content *c, const content_handler *handler,
 	struct content_user *user_sentinel;
 	nserror error;
 	
-	LOG("url "URL_FMT_SPC" -> %p", nsurl_access(llcache_handle_get_url(llcache)), c);
+	NSLOG(netsurf, INFO, "url "URL_FMT_SPC" -> %p",
+			nsurl_access_log(llcache_handle_get_url(llcache)), c);
 
 	user_sentinel = calloc(1, sizeof(struct content_user));
 	if (user_sentinel == NULL) {
@@ -163,7 +164,7 @@ nserror content_llcache_callback(llcache_handle *llcache,
 
 		content_set_status(c, messages_get("Processing"));
 		msg_data.explicit_status_text = NULL;
-		content_broadcast(c, CONTENT_MSG_STATUS, msg_data);
+		content_broadcast(c, CONTENT_MSG_STATUS, &msg_data);
 
 		content_convert(c);
 	}
@@ -172,17 +173,17 @@ nserror content_llcache_callback(llcache_handle *llcache,
 		/** \todo Error page? */
 		c->status = CONTENT_STATUS_ERROR;
 		msg_data.error = event->data.msg;
-		content_broadcast(c, CONTENT_MSG_ERROR, msg_data);
+		content_broadcast(c, CONTENT_MSG_ERROR, &msg_data);
 		break;
 	case LLCACHE_EVENT_PROGRESS:
 		content_set_status(c, event->data.msg);
 		msg_data.explicit_status_text = NULL;
-		content_broadcast(c, CONTENT_MSG_STATUS, msg_data);
+		content_broadcast(c, CONTENT_MSG_STATUS, &msg_data);
 		break;
 	case LLCACHE_EVENT_REDIRECT:
 		msg_data.redirect.from = event->data.redirect.from;
 		msg_data.redirect.to = event->data.redirect.to;
-		content_broadcast(c, CONTENT_MSG_REDIRECT, msg_data);
+		content_broadcast(c, CONTENT_MSG_REDIRECT, &msg_data);
 		break;
 	}
 
@@ -272,7 +273,8 @@ void content_convert(struct content *c)
 	if (c->locked == true)
 		return;
 	
-	LOG("content "URL_FMT_SPC" (%p)", nsurl_access(llcache_handle_get_url(c->llcache)), c);
+	NSLOG(netsurf, INFO, "content "URL_FMT_SPC" (%p)",
+		nsurl_access_log(llcache_handle_get_url(c->llcache)), c);
 
 	if (c->handler->data_complete != NULL) {
 		c->locked = true;
@@ -292,8 +294,6 @@ void content_convert(struct content *c)
 
 void content_set_ready(struct content *c)
 {
-	union content_msg_data msg_data;
-
 	/* The content must be locked at this point, as it can only 
 	 * become READY after conversion. */
 	assert(c->locked);
@@ -301,7 +301,7 @@ void content_set_ready(struct content *c)
 
 	c->status = CONTENT_STATUS_READY;
 	content_update_status(c);
-	content_broadcast(c, CONTENT_MSG_READY, msg_data);
+	content_broadcast(c, CONTENT_MSG_READY, NULL);
 }
 
 /**
@@ -310,7 +310,6 @@ void content_set_ready(struct content *c)
 
 void content_set_done(struct content *c)
 {
-	union content_msg_data msg_data;
 	uint64_t now_ms;
 
 	nsu_getmonotonic_ms(&now_ms);
@@ -318,7 +317,7 @@ void content_set_done(struct content *c)
 	c->status = CONTENT_STATUS_DONE;
 	c->time = now_ms - c->time;
 	content_update_status(c);
-	content_broadcast(c, CONTENT_MSG_DONE, msg_data);
+	content_broadcast(c, CONTENT_MSG_DONE, NULL);
 }
 
 /**
@@ -363,7 +362,7 @@ void content__reformat(struct content *c, bool background,
 		c->locked = false;
 
 		data.background = background;
-		content_broadcast(c, CONTENT_MSG_REFORMAT, data);
+		content_broadcast(c, CONTENT_MSG_REFORMAT, &data);
 	}
 }
 
@@ -379,7 +378,8 @@ void content_destroy(struct content *c)
 	struct content_rfc5988_link *link;
 
 	assert(c);
-	LOG("content %p %s", c, nsurl_access(llcache_handle_get_url(c->llcache)));
+	NSLOG(netsurf, INFO, "content %p %s", c,
+			nsurl_access_log(llcache_handle_get_url(c->llcache)));
 	assert(c->locked == false);
 
 	if (c->handler->destroy != NULL)
@@ -436,7 +436,7 @@ void content_mouse_track(hlcache_handle *h, struct browser_window *bw,
 	} else {
 		union content_msg_data msg_data;
 		msg_data.pointer = BROWSER_POINTER_AUTO;
-		content_broadcast(c, CONTENT_MSG_POINTER, msg_data);
+		content_broadcast(c, CONTENT_MSG_POINTER, &msg_data);
 	}
 
 
@@ -540,7 +540,7 @@ void content__request_redraw(struct content *c,
 	data.redraw.object_width = c->width;
 	data.redraw.object_height = c->height;
 
-	content_broadcast(c, CONTENT_MSG_REDRAW, data);
+	content_broadcast(c, CONTENT_MSG_REDRAW, &data);
 }
 
 
@@ -588,7 +588,7 @@ bool content_scaled_redraw(struct hlcache_handle *h,
 		return true;
 	}
 
-	LOG("Content %p %dx%d ctx:%p", c, width, height, ctx);
+	NSLOG(netsurf, INFO, "Content %p %dx%d ctx:%p", c, width, height, ctx);
 
 	if (ctx->plot->option_knockout) {
 		knockout_plot_start(ctx, &new_ctx);
@@ -600,12 +600,12 @@ bool content_scaled_redraw(struct hlcache_handle *h,
 	clip.x1 = width;
 	clip.y1 = height;
 
-	new_ctx.plot->clip(&clip);
+	new_ctx.plot->clip(&new_ctx, &clip);
 
 	/* Plot white background */
-	plot_ok &= new_ctx.plot->rectangle(clip.x0, clip.y0, clip.x1, clip.y1,
-			plot_style_fill_white);
-
+	plot_ok &= (new_ctx.plot->rectangle(&new_ctx,
+					    plot_style_fill_white,
+					    &clip) == NSERROR_OK);
 
 	/* Set up content redraw data */
 	data.x = 0;
@@ -628,7 +628,7 @@ bool content_scaled_redraw(struct hlcache_handle *h,
 	plot_ok &= c->handler->redraw(c, &data, &clip, &new_ctx);
 
 	if (ctx->plot->option_knockout) {
-		knockout_plot_end();
+		knockout_plot_end(ctx);
 	}
 
 	return plot_ok;
@@ -646,14 +646,20 @@ bool content_scaled_redraw(struct hlcache_handle *h,
  * called with the content.
  */
 
-bool content_add_user(struct content *c,
-		void (*callback)(struct content *c, content_msg msg,
-			union content_msg_data data, void *pw),
+bool content_add_user(
+		struct content *c,
+		void (*callback)(
+				struct content *c,
+				content_msg msg,
+				const union content_msg_data *data,
+				void *pw),
 		void *pw)
 {
 	struct content_user *user;
 
-	LOG("content "URL_FMT_SPC" (%p), user %p %p", nsurl_access(llcache_handle_get_url(c->llcache)), c, callback, pw);
+	NSLOG(netsurf, INFO, "content "URL_FMT_SPC" (%p), user %p %p",
+			nsurl_access_log(llcache_handle_get_url(c->llcache)),
+			c, callback, pw);
 	user = malloc(sizeof(struct content_user));
 	if (!user)
 		return false;
@@ -676,13 +682,19 @@ bool content_add_user(struct content *c,
  * content_add_user().
  */
 
-void content_remove_user(struct content *c,
-		void (*callback)(struct content *c, content_msg msg,
-			union content_msg_data data, void *pw),
+void content_remove_user(
+		struct content *c,
+		void (*callback)(
+				struct content *c,
+				content_msg msg,
+				const union content_msg_data *data,
+				void *pw),
 		void *pw)
 {
 	struct content_user *user, *next;
-	LOG("content "URL_FMT_SPC" (%p), user %p %p", nsurl_access(llcache_handle_get_url(c->llcache)), c, callback, pw);
+	NSLOG(netsurf, INFO, "content "URL_FMT_SPC" (%p), user %p %p",
+			nsurl_access_log(llcache_handle_get_url(c->llcache)),
+			c, callback, pw);
 
 	/* user_list starts with a sentinel */
 	for (user = c->user_list; user->next != 0 &&
@@ -690,7 +702,7 @@ void content_remove_user(struct content *c,
 				user->next->pw == pw); user = user->next)
 		;
 	if (user->next == 0) {
-		LOG("user not found in list");
+		NSLOG(netsurf, INFO, "user not found in list");
 		assert(0);
 		return;
 	}
@@ -753,11 +765,12 @@ bool content_is_shareable(struct content *c)
  */
 
 void content_broadcast(struct content *c, content_msg msg,
-		union content_msg_data data)
+		const union content_msg_data *data)
 {
 	struct content_user *user, *next;
 	assert(c);
-//	LOG("%p %s -> %d", c, c->url, msg);
+
+	NSLOG(netsurf, DEEPDEBUG, "%p -> msg:%d", c, msg);
 	for (user = c->user_list->next; user != 0; user = next) {
 		next = user->next;  /* user may be destroyed during callback */
 		if (user->callback != 0)
@@ -777,8 +790,10 @@ void content_broadcast_errorcode(struct content *c, nserror errorcode)
 
 	for (user = c->user_list->next; user != 0; user = next) {
 		next = user->next;  /* user may be destroyed during callback */
-		if (user->callback != 0)
-			user->callback(c, CONTENT_MSG_ERRORCODE, data, user->pw);
+		if (user->callback != 0) {
+			user->callback(c, CONTENT_MSG_ERRORCODE,
+					&data, user->pw);
+		}
 	}
 }
 
@@ -800,7 +815,8 @@ void content_open(hlcache_handle *h, struct browser_window *bw,
 {
 	struct content *c = hlcache_handle_get_content(h);
 	assert(c != 0);
-	LOG("content %p %s", c, nsurl_access(llcache_handle_get_url(c->llcache)));
+	NSLOG(netsurf, INFO, "content %p %s", c,
+			nsurl_access_log(llcache_handle_get_url(c->llcache)));
 	if (c->handler->open != NULL)
 		c->handler->open(c, bw, page, params);
 }
@@ -816,7 +832,8 @@ void content_close(hlcache_handle *h)
 {
 	struct content *c = hlcache_handle_get_content(h);
 	assert(c != 0);
-	LOG("content %p %s", c, nsurl_access(llcache_handle_get_url(c->llcache)));
+	NSLOG(netsurf, INFO, "content %p %s", c,
+			nsurl_access_log(llcache_handle_get_url(c->llcache)));
 	if (c->handler->close != NULL)
 		c->handler->close(c);
 }
@@ -1040,7 +1057,7 @@ bool content__add_rfc5988_link(struct content *c,
 
 	/* broadcast the data */
 	msg_data.rfc5988_link = newlink;
-	content_broadcast(c, CONTENT_MSG_LINK, msg_data);
+	content_broadcast(c, CONTENT_MSG_LINK, &msg_data);
 
 	return true;
 }
@@ -1464,7 +1481,7 @@ nserror content__clone(const struct content *c, struct content *nc)
  */
 nserror content_abort(struct content *c)
 {
-	LOG("Aborting %p", c);
+	NSLOG(netsurf, INFO, "Aborting %p", c);
 	
 	if (c->handler->stop != NULL)
 		c->handler->stop(c);

@@ -24,32 +24,37 @@
 #include "monkey/401login.h"
 
 typedef struct monkey401 {
-  struct monkey401 *r_next, *r_prev;
-  uint32_t num;
-  lwc_string *host; /* Ignore */
-  nserror (*cb)(bool,void*);
-  void *pw;
+	struct monkey401 *r_next, *r_prev;
+	uint32_t num;
+	lwc_string *host; /* Ignore */
+	nserror (*cb)(const char *, const char *, void *);
+	void *pw;
 } monkey401_t;
 
 static monkey401_t *m4_ring = NULL;
 static uint32_t m4_ctr = 0;
 
-void gui_401login_open(nsurl *url, const char *realm,
-                       nserror (*cb)(bool proceed, void *pw), void *cbpw)
+nserror gui_401login_open(nsurl *url, const char *realm,
+		const char *username, const char *password,
+		nserror (*cb)(const char *username,
+				const char *password,
+				void *pw),
+		void *cbpw)
 {
-  monkey401_t *m4t = calloc(sizeof(*m4t), 1);
-  if (m4t == NULL) {
-    cb(false, cbpw);
-    return;
-  }
-  m4t->cb = cb;
-  m4t->pw = cbpw;
-  m4t->num = m4_ctr++;
+	monkey401_t *m4t = calloc(sizeof(*m4t), 1);
+	if (m4t == NULL) {
+		return NSERROR_NOMEM;
+	}
+	m4t->cb = cb;
+	m4t->pw = cbpw;
+	m4t->num = m4_ctr++;
   
-  RING_INSERT(m4_ring, m4t);
+	RING_INSERT(m4_ring, m4t);
   
-  fprintf(stdout, "401LOGIN OPEN M4 %u URL %s REALM %s\n",
-          m4t->num, nsurl_access(url), realm);
+	fprintf(stdout, "401LOGIN OPEN M4 %u URL %s REALM %s\n",
+		m4t->num, nsurl_access(url), realm);
+
+	return NSERROR_OK;
 }
 
 

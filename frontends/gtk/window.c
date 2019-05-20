@@ -23,7 +23,6 @@
  */
 
 #include <stdlib.h>
-#include <inttypes.h>
 #include <string.h>
 #include <limits.h>
 #include <assert.h>
@@ -32,9 +31,9 @@
 #include <gdk/gdkkeysyms.h>
 #include <gdk-pixbuf/gdk-pixdata.h>
 
+#include "netsurf/inttypes.h"
 #include "utils/log.h"
 #include "utils/utf8.h"
-#include "utils/utils.h"
 #include "utils/nsoption.h"
 #include "netsurf/content.h"
 #include "netsurf/browser_window.h"
@@ -43,7 +42,6 @@
 #include "netsurf/plotters.h"
 #include "netsurf/form.h"
 #include "netsurf/keypress.h"
-#include "desktop/textarea.h"
 #include "desktop/searchweb.h"
 #include "desktop/textinput.h"
 
@@ -53,6 +51,7 @@
 #include "gtk/compat.h"
 #include "gtk/gui.h"
 #include "gtk/scaffolding.h"
+#include "gtk/local_history.h"
 #include "gtk/plotters.h"
 #include "gtk/schedule.h"
 #include "gtk/tabs.h"
@@ -212,7 +211,6 @@ nsgtk_window_draw_event(GtkWidget *widget, cairo_t *cr, gpointer data)
 	assert(z);
 	assert(GTK_WIDGET(gw->layout) == widget);
 
-	current_widget = (GtkWidget *)gw->layout;
 	current_cr = cr;
 
 	GtkAdjustment *vscroll = nsgtk_layout_get_vadjustment(gw->layout);
@@ -234,8 +232,6 @@ nsgtk_window_draw_event(GtkWidget *widget, cairo_t *cr, gpointer data)
 	if (gw->careth != 0) {
 		nsgtk_plot_caret(gw->caretx, gw->carety, gw->careth);
 	}
-
-	current_widget = NULL;
 
 	return FALSE;
 }
@@ -262,7 +258,6 @@ nsgtk_window_draw_event(GtkWidget *widget, GdkEventExpose *event, gpointer data)
 	assert(z);
 	assert(GTK_WIDGET(gw->layout) == widget);
 
-	current_widget = (GtkWidget *)gw->layout;
 	current_cr = gdk_cairo_create(nsgtk_layout_get_bin_window(gw->layout));
 
 	clip.x0 = event->area.x;
@@ -277,8 +272,6 @@ nsgtk_window_draw_event(GtkWidget *widget, GdkEventExpose *event, gpointer data)
 	}
 
 	cairo_destroy(current_cr);
-
-	current_widget = NULL;
 
 	return FALSE;
 }
@@ -346,8 +339,7 @@ static gboolean nsgtk_window_button_press_event(GtkWidget *widget,
 
 	gtk_im_context_reset(g->input_method);
 	gtk_widget_grab_focus(GTK_WIDGET(g->layout));
-	gtk_widget_hide(GTK_WIDGET(nsgtk_scaffolding_history_window(
-			g->scaffold)->window));
+	nsgtk_local_history_hide();
 
 	g->mouse.pressed_x = event->x / browser_window_get_scale(g->bw);
 	g->mouse.pressed_y = event->y / browser_window_get_scale(g->bw);
@@ -362,6 +354,7 @@ static gboolean nsgtk_window_button_press_event(GtkWidget *widget,
 		break;
 
 	case 3:	/* Right button, usually. Action button, context menu. */
+		/** \todo determine if hiding the caret here is necessary */
 		browser_window_remove_caret(g->bw, true);
 		nsgtk_scaffolding_context_menu(g->scaffold,
 					       g->mouse.pressed_x,
@@ -465,7 +458,7 @@ nsgtk_window_scroll_event(GtkWidget *widget,
 		break;
 #endif
 	default:
-		LOG("Unhandled mouse scroll direction");
+		NSLOG(netsurf, INFO, "Unhandled mouse scroll direction");
 		return TRUE;
 	}
 
@@ -748,7 +741,7 @@ gui_window_create(struct browser_window *bw,
 
 	res = nsgtk_builder_new_from_resname("tabcontents", &tab_builder);
 	if (res != NSERROR_OK) {
-		LOG("Tab contents UI builder init failed");
+		NSLOG(netsurf, INFO, "Tab contents UI builder init failed");
 		return NULL;
 	}
 
@@ -761,7 +754,8 @@ gui_window_create(struct browser_window *bw,
 		return NULL;
 	}
 
-	LOG("Creating gui window %p for browser window %p", g, bw);
+	NSLOG(netsurf, INFO, "Creating gui window %p for browser window %p",
+	      g, bw);
 
 	g->bw = bw;
 	g->mouse.state = 0;
@@ -902,21 +896,6 @@ void nsgtk_reflow_all_windows(void)
 }
 
 
-/**
- * callback from core to reformat a window.
- */
-static void nsgtk_window_reformat(struct gui_window *gw)
-{
-	GtkAllocation alloc;
-
-	if (gw != NULL) {
-		/** @todo consider gtk_widget_get_allocated_width() */
-		nsgtk_widget_get_allocation(GTK_WIDGET(gw->layout), &alloc);
-
-		browser_window_reformat(gw->bw, false, alloc.width, alloc.height);
-	}
-}
-
 void nsgtk_window_destroy_browser(struct gui_window *gw)
 {
 	/* remove tab */
@@ -925,10 +904,10 @@ void nsgtk_window_destroy_browser(struct gui_window *gw)
 
 static void gui_window_destroy(struct gui_window *g)
 {
-	LOG("gui_window: %p", g);
+	NSLOG(netsurf, INFO, "gui_window: %p", g);
 	assert(g != NULL);
 	assert(g->bw != NULL);
-	LOG("scaffolding: %p", g->scaffold);
+	NSLOG(netsurf, INFO, "scaffolding: %p", g->scaffold);
 
 	if (g->prev) {
 		g->prev->next = g->next;
@@ -940,7 +919,7 @@ static void gui_window_destroy(struct gui_window *g)
 		g->next->prev = g->prev;
 	}
 
-	LOG("window list head: %p", window_list);
+	NSLOG(netsurf, INFO, "window list head: %p", window_list);
 }
 
 /**
@@ -962,13 +941,13 @@ static void gui_window_set_icon(struct gui_window *gw, struct hlcache_handle *ic
 	if (icon != NULL) {
 		icon_bitmap = content_get_bitmap(icon);
 		if (icon_bitmap != NULL) {
-			LOG("Using %p bitmap", icon_bitmap);
+			NSLOG(netsurf, INFO, "Using %p bitmap", icon_bitmap);
 			gw->icon = nsgdk_pixbuf_get_from_surface(icon_bitmap->surface, 16, 16);
 		}
 	}
 
 	if (gw->icon == NULL) {
-		LOG("Using default favicon");
+		NSLOG(netsurf, INFO, "Using default favicon");
 		g_object_ref(favicon_pixbuf);
 		gw->icon = favicon_pixbuf;
 	}
@@ -1021,27 +1000,38 @@ static void gui_window_remove_caret(struct gui_window *g)
 
 }
 
-static void gui_window_redraw_window(struct gui_window *g)
-{
-	gtk_widget_queue_draw(GTK_WIDGET(g->layout));
-}
-
-static void gui_window_update_box(struct gui_window *g, const struct rect *rect)
+/**
+ * Invalidates an area of a GTK browser window
+ *
+ * \param g gui_window
+ * \param rect area to redraw or NULL for the entire window area
+ * \return NSERROR_OK on success or appropriate error code
+ */
+static nserror
+nsgtk_window_invalidate_area(struct gui_window *g, const struct rect *rect)
 {
 	int sx, sy;
 	float scale;
 
-	if (!browser_window_has_content(g->bw))
-		return;
+	if (rect == NULL) {
+		gtk_widget_queue_draw(GTK_WIDGET(g->layout));
+		return NSERROR_OK;
+	}
+
+	if (!browser_window_has_content(g->bw)) {
+		return NSERROR_OK;
+	}
 
 	gui_window_get_scroll(g, &sx, &sy);
 	scale = browser_window_get_scale(g->bw);
 
 	gtk_widget_queue_draw_area(GTK_WIDGET(g->layout),
-			rect->x0 * scale - sx,
-			rect->y0 * scale - sy,
-			(rect->x1 - rect->x0) * scale,
-			(rect->y1 - rect->y0) * scale);
+				   rect->x0 * scale - sx,
+				   rect->y0 * scale - sy,
+				   (rect->x1 - rect->x0) * scale,
+				   (rect->y1 - rect->y0) * scale);
+
+	return NSERROR_OK;
 }
 
 static void gui_window_set_status(struct gui_window *g, const char *text)
@@ -1052,11 +1042,25 @@ static void gui_window_set_status(struct gui_window *g, const char *text)
 }
 
 
-static void gui_window_set_scroll(struct gui_window *g, int sx, int sy)
+/**
+ * Set the scroll position of a gtk browser window.
+ *
+ * Scrolls the viewport to ensure the specified rectangle of the
+ *   content is shown. The GTK implementation scrolls the contents so
+ *   the specified point in the content is at the top of the viewport.
+ *
+ * \param g gui window to scroll
+ * \param rect The rectangle to ensure is shown.
+ * \return NSERROR_OK on success or apropriate error code.
+ */
+static nserror
+gui_window_set_scroll(struct gui_window *g, const struct rect *rect)
 {
 	GtkAdjustment *vadj = nsgtk_layout_get_vadjustment(g->layout);
 	GtkAdjustment *hadj = nsgtk_layout_get_hadjustment(g->layout);
-	gdouble vlower, vpage, vupper, hlower, hpage, hupper, x = (double)sx, y = (double)sy;
+	gdouble vlower, vpage, vupper, hlower, hpage, hupper;
+	gdouble x = (gdouble)rect->x0;
+	gdouble y = (gdouble)rect->y0;
 
 	assert(vadj);
 	assert(hadj);
@@ -1064,17 +1068,23 @@ static void gui_window_set_scroll(struct gui_window *g, int sx, int sy)
 	g_object_get(vadj, "page-size", &vpage, "lower", &vlower, "upper", &vupper, NULL);
 	g_object_get(hadj, "page-size", &hpage, "lower", &hlower, "upper", &hupper, NULL);
 
-	if (x < hlower)
+	if (x < hlower) {
 		x = hlower;
-	if (x > (hupper - hpage))
+	}
+	if (x > (hupper - hpage)) {
 		x = hupper - hpage;
-	if (y < vlower)
+	}
+	if (y < vlower) {
 		y = vlower;
-	if (y > (vupper - vpage))
+	}
+	if (y > (vupper - vpage)) {
 		y = vupper - vpage;
+	}
 
 	gtk_adjustment_set_value(vadj, y);
 	gtk_adjustment_set_value(hadj, x);
+
+	return NSERROR_OK;
 }
 
 static void gui_window_update_extent(struct gui_window *g)
@@ -1199,24 +1209,36 @@ static void gui_window_place_caret(struct gui_window *g, int x, int y, int heigh
 }
 
 
-static void gui_window_get_dimensions(struct gui_window *g, int *width, int *height,
-			       bool scaled)
+/**
+ * Find the current dimensions of a GTK browser window content area.
+ *
+ * \param gw The gui window to measure content area of.
+ * \param width receives width of window
+ * \param height receives height of window
+ * \param scaled whether to return scaled values
+ * \return NSERROR_OK on sucess and width and height updated
+ *          else error code.
+ */
+static nserror
+gui_window_get_dimensions(struct gui_window *gw,
+			  int *width, int *height,
+			  bool scaled)
 {
 	GtkAllocation alloc;
 
-	/* @todo consider gtk_widget_get_allocated_width() */
-	nsgtk_widget_get_allocation(GTK_WIDGET(g->layout), &alloc);
+	/** @todo consider gtk_widget_get_allocated_width() */
+	nsgtk_widget_get_allocation(GTK_WIDGET(gw->layout), &alloc);
 
 	*width = alloc.width;
 	*height = alloc.height;
 
 	if (scaled) {
-		float scale = browser_window_get_scale(g->bw);
+		float scale = browser_window_get_scale(gw->bw);
 		*width /= scale;
 		*height /= scale;
 	}
-	LOG("width: %i", *width);
-	LOG("height: %i", *height);
+
+	return NSERROR_OK;
 }
 
 static void gui_window_start_selection(struct gui_window *g)
@@ -1247,8 +1269,8 @@ static void gui_window_create_form_select_menu(struct gui_window *g,
 	item = 0;
 	option = form_select_get_option(control, item);
 	while (option != NULL) {
-		LOG("Item %"PRIdPTR" option %p text %s",
-		    item, option, option->text);
+		NSLOG(netsurf, INFO, "Item %"PRIdPTR" option %p text %s",
+		      item, option, option->text);
 		menu_item = gtk_check_menu_item_new_with_label(option->text);
 		if (option->selected) {
 			gtk_check_menu_item_set_active(
@@ -1272,9 +1294,7 @@ static void gui_window_create_form_select_menu(struct gui_window *g,
 
 	gtk_widget_show_all(select_menu);
 
-	gtk_menu_popup(GTK_MENU(select_menu), NULL, NULL, NULL,
-			NULL /* data */, 0, gtk_get_current_event_time());
-
+	nsgtk_menu_popup_at_pointer(GTK_MENU(select_menu), NULL);
 }
 
 static void
@@ -1291,10 +1311,10 @@ gui_window_file_gadget_open(struct gui_window *g,
 			NSGTK_STOCK_OPEN, GTK_RESPONSE_ACCEPT,
 			NULL);
 
-	LOG("*** open dialog: %p", dialog);
+	NSLOG(netsurf, INFO, "*** open dialog: %p", dialog);
 			
 	int ret = gtk_dialog_run(GTK_DIALOG(dialog));
-	LOG("*** return value: %d", ret);
+	NSLOG(netsurf, INFO, "*** return value: %d", ret);
 	if (ret == GTK_RESPONSE_ACCEPT) {
 		char *filename;
 
@@ -1302,7 +1322,7 @@ gui_window_file_gadget_open(struct gui_window *g,
 			GTK_FILE_CHOOSER(dialog));
 		
 		browser_window_set_gadget_filename(g->bw, gadget, filename);
-		
+
 		g_free(filename);
 	}
 
@@ -1312,13 +1332,11 @@ gui_window_file_gadget_open(struct gui_window *g,
 static struct gui_window_table window_table = {
 	.create = gui_window_create,
 	.destroy = gui_window_destroy,
-	.redraw = gui_window_redraw_window,
-	.update = gui_window_update_box,
+	.invalidate = nsgtk_window_invalidate_area,
 	.get_scroll = gui_window_get_scroll,
 	.set_scroll = gui_window_set_scroll,
 	.get_dimensions = gui_window_get_dimensions,
 	.update_extent = gui_window_update_extent,
-	.reformat = nsgtk_window_reformat,
 
 	.set_icon = gui_window_set_icon,
 	.set_status = gui_window_set_status,

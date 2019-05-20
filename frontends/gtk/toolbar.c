@@ -25,8 +25,8 @@
 #include "desktop/searchweb.h"
 #include "utils/log.h"
 #include "utils/messages.h"
-#include "utils/utils.h"
 #include "utils/nsoption.h"
+#include "utils/file.h"
 
 #include "gtk/gui.h"
 #include "gtk/warn.h"
@@ -45,7 +45,7 @@ static bool edit_mode = false;
 
 struct nsgtk_toolbar_custom_store {
 	GtkWidget *window;
- 	GtkWidget *store_buttons[PLACEHOLDER_BUTTON];
+	GtkWidget *store_buttons[PLACEHOLDER_BUTTON];
 	GtkWidget *widgetvbox;
 	GtkWidget *currentbar;
 	char numberh; /* current horizontal location while adding */
@@ -108,13 +108,13 @@ static char *remove_underscores(const char *s, bool replacespace)
 	ret = malloc(len + 1);
 	if (ret == NULL) {
 		return NULL;
-        }
+	}
 	for (i = 0, ii = 0; i < len; i++) {
 		if (s[i] != '_') {
 			ret[ii++] = s[i];
-                } else if (replacespace) {
+		} else if (replacespace) {
 			ret[ii++] = ' ';
-                }
+		}
 	}
 	ret[ii] = '\0';
 	return ret;
@@ -126,6 +126,7 @@ static char *remove_underscores(const char *s, bool replacespace)
  *
  * \param tbbutton button reference
  * \param iconsize The size of icons to select.
+ * \param usedef Use the default image if not found.
  * \return default images.
  */
 static GtkImage *
@@ -194,6 +195,7 @@ nsgtk_theme_image_default(nsgtk_toolbar_button tbbutton,
  *
  * \param tbbutton search button reference
  * \param iconsize The size of icons to select.
+ * \param usedef Use the default image if not found.
  * \return default search image.
  */
 
@@ -207,18 +209,18 @@ nsgtk_theme_searchimage_default(nsgtk_search_buttons tbbutton,
 	switch (tbbutton) {
 
 	case (SEARCH_BACK_BUTTON):
-		image = GTK_IMAGE(nsgtk_image_new_from_stock(NSGTK_STOCK_GO_BACK,
-							     iconsize));
+		image = GTK_IMAGE(nsgtk_image_new_from_stock(
+					  NSGTK_STOCK_GO_BACK, iconsize));
 		break;
 
 	case (SEARCH_FORWARD_BUTTON):
-		image = GTK_IMAGE(nsgtk_image_new_from_stock(NSGTK_STOCK_GO_FORWARD,
-							    iconsize));
+		image = GTK_IMAGE(nsgtk_image_new_from_stock(
+					  NSGTK_STOCK_GO_FORWARD, iconsize));
 		break;
 
 	case (SEARCH_CLOSE_BUTTON):
-		image = GTK_IMAGE(nsgtk_image_new_from_stock(NSGTK_STOCK_CLOSE,
-							    iconsize));
+		image = GTK_IMAGE(nsgtk_image_new_from_stock(
+					  NSGTK_STOCK_CLOSE, iconsize));
 		break;
 
 	default:
@@ -226,7 +228,8 @@ nsgtk_theme_searchimage_default(nsgtk_search_buttons tbbutton,
 	}
 
 	if (usedef && (image == NULL)) {
-		image = GTK_IMAGE(nsgtk_image_new_from_stock("gtk-missing-image", iconsize));
+		image = GTK_IMAGE(nsgtk_image_new_from_stock(
+					  "gtk-missing-image", iconsize));
 	}
 
 	return image;
@@ -254,7 +257,6 @@ static struct nsgtk_theme *nsgtk_theme_load(GtkIconSize iconsize, bool usedef)
 		theme->image[btnloop] = nsgtk_theme_image_default(btnloop,
 								  iconsize,
 								  usedef);
-
 	}
 
 	for (btnloop = SEARCH_BACK_BUTTON;
@@ -822,8 +824,9 @@ static void nsgtk_toolbar_close(struct nsgtk_scaffolding *g)
  */
 static gboolean nsgtk_toolbar_cancel_clicked(GtkWidget *widget, gpointer data)
 {
-	edit_mode = false;
 	struct nsgtk_scaffolding *g = (struct nsgtk_scaffolding *)data;
+
+	edit_mode = false;
 	/* reset g->buttons->location */
 	for (int i = BACK_BUTTON; i < PLACEHOLDER_BUTTON; i++) {
 		nsgtk_scaffolding_button(g, i)->location =
@@ -949,6 +952,7 @@ void nsgtk_toolbar_customization_load(struct nsgtk_scaffolding *g)
  */
 static nserror nsgtk_toolbar_customization_save(struct nsgtk_scaffolding *g)
 {
+	char *choices = NULL;
 	char *order;
 	int order_len = PLACEHOLDER_BUTTON * 12; /* length of order buffer */
 	int tbidx;
@@ -970,7 +974,8 @@ static nserror nsgtk_toolbar_customization_save(struct nsgtk_scaffolding *g)
 				nsgtk_scaffolding_button(g, tbidx)->location);
 		if (plen == order_len) {
 			/* ran out of space, bail early */
-			LOG("toolbar ordering exceeded available space");
+			NSLOG(netsurf, INFO,
+			      "toolbar ordering exceeded available space");
 			break;
 		}
 		cur += plen;
@@ -978,6 +983,13 @@ static nserror nsgtk_toolbar_customization_save(struct nsgtk_scaffolding *g)
 	}
 
 	nsoption_set_charp(toolbar_order, order);
+
+	/* ensure choices are saved */
+	netsurf_mkpath(&choices, NULL, 2, nsgtk_config_home, "Choices");
+	if (choices != NULL) {
+		nsoption_write(choices, NULL, NULL);
+		free(choices);
+	}
 
 	return NSERROR_OK;
 }
@@ -988,8 +1000,9 @@ static nserror nsgtk_toolbar_customization_save(struct nsgtk_scaffolding *g)
  */
 static gboolean nsgtk_toolbar_persist(GtkWidget *widget, gpointer data)
 {
-	edit_mode = false;
 	struct nsgtk_scaffolding *g = (struct nsgtk_scaffolding *)data;
+
+	edit_mode = false;
 	/* save state to file, update toolbars for all windows */
 	nsgtk_toolbar_customization_save(g);
 	nsgtk_toolbar_cast(g);
@@ -1096,7 +1109,6 @@ nsgtk_toolbar_store_action(GtkWidget *widget, GdkDragContext *gdc,
  */
 static void nsgtk_toolbar_window_open(struct nsgtk_scaffolding *g)
 {
-	int x = 0, y = 0;
 	struct nsgtk_theme *theme;
 	nserror res;
 
@@ -1109,8 +1121,8 @@ static void nsgtk_toolbar_window_open(struct nsgtk_scaffolding *g)
 
 	res = nsgtk_builder_new_from_resname("toolbar", &window->builder);
 	if (res != NSERROR_OK) {
-		LOG("Toolbar UI builder init failed");
-		nsgtk_warning(messages_get("NoMemory"), 0);
+		NSLOG(netsurf, INFO, "Toolbar UI builder init failed");
+		nsgtk_warning("Toolbar UI builder init failed", 0);
 		nsgtk_toolbar_cancel_clicked(NULL, g);
 		free(theme);
 		return;
@@ -1118,8 +1130,8 @@ static void nsgtk_toolbar_window_open(struct nsgtk_scaffolding *g)
 
 	gtk_builder_connect_signals(window->builder, NULL);
 
-	window->window = GTK_WIDGET(gtk_builder_get_object(window->builder,
-							   "toolbarwindow"));
+	window->window = GTK_WIDGET(gtk_builder_get_object(
+					    window->builder, "dialogToolbar"));
 	if (window->window == NULL) {
 		nsgtk_warning(messages_get("NoMemory"), 0);
 		nsgtk_toolbar_cancel_clicked(NULL, g);
@@ -1127,8 +1139,11 @@ static void nsgtk_toolbar_window_open(struct nsgtk_scaffolding *g)
 		return;
 	}
 
-	window->widgetvbox = GTK_WIDGET(gtk_builder_get_object(window->builder,
-							       "widgetvbox"));
+	gtk_window_set_transient_for(GTK_WINDOW(window->window),
+				     nsgtk_scaffolding_window(g));
+
+	window->widgetvbox = GTK_WIDGET(gtk_builder_get_object(
+						window->builder, "widgetvbox"));
 	if (window->widgetvbox == NULL) {
 		nsgtk_warning(messages_get("NoMemory"), 0);
 		nsgtk_toolbar_cancel_clicked(NULL, g);
@@ -1136,9 +1151,12 @@ static void nsgtk_toolbar_window_open(struct nsgtk_scaffolding *g)
 		return;
 	}
 
-	window->numberh = NSGTK_STORE_WIDTH; /* preset to width [in buttons] of */
+	/* preset to width [in buttons] of */
+	window->numberh = NSGTK_STORE_WIDTH;
+
 	/*  store to cause creation of a new toolbar */
 	window->currentbutton = -1;
+
 	/* load toolbuttons */
 	/* add toolbuttons to window */
 	/* set event handlers */
@@ -1158,33 +1176,20 @@ static void nsgtk_toolbar_window_open(struct nsgtk_scaffolding *g)
 	}
 	free(theme);
 
-	gtk_window_set_transient_for(GTK_WINDOW(window->window),
-				     nsgtk_scaffolding_window(g));
-	gtk_window_set_title(GTK_WINDOW(window->window), messages_get(
-				     "gtkToolBarTitle"));
+
 	gtk_window_set_accept_focus(GTK_WINDOW(window->window), FALSE);
+
 	gtk_drag_dest_set(GTK_WIDGET(window->window), GTK_DEST_DEFAULT_MOTION |
 			  GTK_DEST_DEFAULT_DROP, &entry, 1, GDK_ACTION_COPY);
-	gtk_widget_show_all(window->window);
-	gtk_window_set_position(GTK_WINDOW(window->window),
-				GTK_WIN_POS_CENTER_ON_PARENT);
-	gtk_window_get_position(nsgtk_scaffolding_window(g), &x, &y);
-	gtk_window_move(GTK_WINDOW(window->window), x, y + 100);
 
-	g_signal_connect(GTK_WIDGET(gtk_builder_get_object(window->builder,
-							   "cancelbutton")),
-			 "clicked",
-			 G_CALLBACK(nsgtk_toolbar_cancel_clicked),
-			 g);
-
-	g_signal_connect(GTK_WIDGET(gtk_builder_get_object(window->builder,
-							   "okbutton")),
+	g_signal_connect(GTK_WIDGET(gtk_builder_get_object(
+					    window->builder, "close")),
 			 "clicked",
 			 G_CALLBACK(nsgtk_toolbar_persist),
 			 g);
 
-	g_signal_connect(GTK_WIDGET(gtk_builder_get_object(window->builder,
-							   "resetbutton")),
+	g_signal_connect(GTK_WIDGET(gtk_builder_get_object(
+					    window->builder, "reset")),
 			 "clicked",
 			 G_CALLBACK(nsgtk_toolbar_reset),
 			 g);
@@ -1197,6 +1202,8 @@ static void nsgtk_toolbar_window_open(struct nsgtk_scaffolding *g)
 
 	g_signal_connect(window->window, "drag-motion",
 			 G_CALLBACK(nsgtk_toolbar_store_action), g);
+
+	gtk_widget_show_all(window->window);
 }
 
 /**
@@ -1340,33 +1347,37 @@ nsgtk_toolbar_set_handler(struct nsgtk_scaffolding *g, nsgtk_toolbar_button i)
 	case URL_BAR_ITEM:
 		nsgtk_scaffolding_update_url_bar_ref(g);
 		g_signal_connect(GTK_WIDGET(nsgtk_scaffolding_urlbar(g)),
-				"activate", G_CALLBACK(
-				nsgtk_window_url_activate_event), g);
+				 "activate", G_CALLBACK(
+					 nsgtk_window_url_activate_event), g);
 		g_signal_connect(GTK_WIDGET(nsgtk_scaffolding_urlbar(g)),
-				"changed", G_CALLBACK(
-				nsgtk_window_url_changed), g);
+				 "changed", G_CALLBACK(
+					 nsgtk_window_url_changed), g);
 		break;
+
 	case THROBBER_ITEM:
 		nsgtk_scaffolding_update_throbber_ref(g);
 		break;
+
 	case WEBSEARCH_ITEM:
 		nsgtk_scaffolding_update_websearch_ref(g);
 		g_signal_connect(GTK_WIDGET(nsgtk_scaffolding_websearch(g)),
-				"activate", G_CALLBACK(
-				nsgtk_websearch_activate), g);
+				 "activate", G_CALLBACK(
+					 nsgtk_websearch_activate), g);
 		g_signal_connect(GTK_WIDGET(nsgtk_scaffolding_websearch(g)),
-				"button-press-event", G_CALLBACK(
-				nsgtk_websearch_clear), g);
+				 "button-press-event", G_CALLBACK(
+					 nsgtk_websearch_clear), g);
 		break;
+
 	default:
 		if ((nsgtk_scaffolding_button(g, i)->bhandler != NULL) &&
-				(nsgtk_scaffolding_button(g, i)->button
-				!= NULL))
-			g_signal_connect(nsgtk_scaffolding_button(g, i)->
-					button, "clicked",
-					G_CALLBACK(nsgtk_scaffolding_button(g,
-					i)->bhandler), g);
-	break;
+		    (nsgtk_scaffolding_button(g, i)->button != NULL)) {
+			g_signal_connect(
+				nsgtk_scaffolding_button(g, i)->button,
+				"clicked",
+				G_CALLBACK(nsgtk_scaffolding_button(
+						   g, i)->bhandler), g);
+		}
+		break;
 	}
 }
 
@@ -1458,7 +1469,8 @@ DATAHANDLER(prevtab, PREVTAB, window)
 DATAHANDLER(guide, GUIDE, window)
 DATAHANDLER(info, INFO, window)
 #undef DATAHANDLER
-#define DATAHANDLER(p, q, r)\
+
+#define DATAHANDLER(p, q, r)						\
 gboolean nsgtk_toolbar_##p##_button_data(GtkWidget *widget, GdkDragContext\
 		*cont, GtkSelectionData	*selection, guint info, guint time,\
 		gpointer data)\
@@ -1479,5 +1491,3 @@ gboolean nsgtk_toolbar_##p##_toolbar_button_data(GtkWidget *widget,\
 DATAHANDLER(throbber, THROBBER, window)
 DATAHANDLER(websearch, WEBSEARCH, window)
 #undef DATAHANDLER
-
-

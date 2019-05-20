@@ -44,8 +44,10 @@
 #include "riscos/configure.h"
 #include "riscos/cookies.h"
 #include "riscos/dialog.h"
+#include "riscos/local_history.h"
 #include "riscos/global_history.h"
 #include "riscos/gui.h"
+#include "riscos/window.h"
 #include "riscos/hotlist.h"
 #include "riscos/menus.h"
 #include "riscos/save.h"
@@ -176,21 +178,24 @@ void ro_gui_dialog_init(void)
 			ro_gui_dialog_zoom_apply);
 	ro_gui_wimp_event_set_help_prefix(dialog_zoom, "HelpScaleView");
 
-	/* Treeview initialisation has moved to the end, to allow any
+	/* core window based initialisation done last to allow any
 	 * associated dialogues to be set up first.
 	 */
 
 	/* certificate verification window */
-	ro_gui_cert_preinitialise();
+	ro_gui_cert_initialise();
 
 	/* hotlist window */
-	ro_gui_hotlist_preinitialise();
+	ro_gui_hotlist_initialise();
+
+	/* local history window */
+	ro_gui_local_history_initialise();
 
 	/* global history window */
-	ro_gui_global_history_preinitialise();
+	ro_gui_global_history_initialise();
 
 	/* cookies window */
-	ro_gui_cookies_preinitialise();
+	ro_gui_cookies_initialise();
 }
 
 
@@ -215,7 +220,8 @@ wimp_w ro_gui_dialog_create(const char *template_name)
 	window->sprite_area = gui_sprites;
 	error = xwimp_create_window(window, &w);
 	if (error) {
-		LOG("xwimp_create_window: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_create_window: 0x%x: %s",
+		      error->errnum, error->errmess);
 		xwimp_close_template();
 		die(error->errmess);
 	}
@@ -254,12 +260,13 @@ wimp_window * ro_gui_dialog_load_template(const char *template_name)
 	error = xwimp_load_template(wimp_GET_SIZE, 0, 0, wimp_NO_FONTS,
 			name, 0, &window_size, &data_size, &context);
 	if (error) {
-		LOG("xwimp_load_template: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_load_template: 0x%x: %s",
+		      error->errnum, error->errmess);
 		xwimp_close_template();
 		die(error->errmess);
 	}
 	if (!context) {
-		LOG("template '%s' missing", template_name);
+		NSLOG(netsurf, INFO, "template '%s' missing", template_name);
 		xwimp_close_template();
 		die("Template");
 	}
@@ -276,7 +283,8 @@ wimp_window * ro_gui_dialog_load_template(const char *template_name)
 	error = xwimp_load_template(window, data, data + data_size,
 			wimp_NO_FONTS, name, 0, 0, 0, 0);
 	if (error) {
-		LOG("xwimp_load_template: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_load_template: 0x%x: %s",
+		      error->errnum, error->errmess);
 		xwimp_close_template();
 		die(error->errmess);
 	}
@@ -304,7 +312,8 @@ void ro_gui_dialog_open(wimp_w w)
 	state.w = w;
 	error = xwimp_get_window_state(&state);
 	if (error) {
-		LOG("xwimp_get_window_state: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_get_window_state: 0x%x: %s",
+		      error->errnum, error->errmess);
 		ro_warn_user("WimpError", error->errmess);
 		return;
 	}
@@ -351,7 +360,8 @@ void ro_gui_dialog_close(wimp_w close)
 	*/
 	error = xwimp_get_caret_position(&caret);
 	if (error) {
-		LOG("xwimp_get_caret_position: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_get_caret_position: 0x%x: %s",
+		      error->errnum, error->errmess);
 		ro_warn_user("WimpError", error->errmess);
 	} else if (caret.w == close) {
 		/* Check if we are a persistent window */
@@ -362,7 +372,10 @@ void ro_gui_dialog_close(wimp_w close)
 					32, -1);
 			/* parent may have been closed first */
 			if ((error) && (error->errnum != 0x287)) {
-				LOG("xwimp_set_caret_position: 0x%x: %s", error->errnum, error->errmess);
+				NSLOG(netsurf, INFO,
+				      "xwimp_set_caret_position: 0x%x: %s",
+				      error->errnum,
+				      error->errmess);
 				ro_warn_user("WimpError", error->errmess);
 			}
 		}
@@ -370,7 +383,8 @@ void ro_gui_dialog_close(wimp_w close)
 
 	error = xwimp_close_window(close);
 	if (error) {
-		LOG("xwimp_close_window: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_close_window: 0x%x: %s",
+		      error->errnum, error->errmess);
 		ro_warn_user("WimpError", error->errmess);
 	}
 }
@@ -455,7 +469,8 @@ void ro_gui_dialog_open_at_pointer(wimp_w w)
 	/* get the pointer position */
 	error = xwimp_get_pointer_info(&ptr);
 	if (error) {
-		LOG("xwimp_get_pointer_info: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_get_pointer_info: 0x%x: %s",
+		      error->errnum, error->errmess);
 		ro_warn_user("WimpError", error->errmess);
 		return;
 	}
@@ -478,7 +493,8 @@ void ro_gui_dialog_open_xy(wimp_w w, int x, int y)
 	state.w = w;
 	error = xwimp_get_window_state(&state);
 	if (error) {
-		LOG("xwimp_get_window_state: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_get_window_state: 0x%x: %s",
+		      error->errnum, error->errmess);
 		ro_warn_user("WimpError", error->errmess);
 		return;
 	}
@@ -493,7 +509,8 @@ void ro_gui_dialog_open_xy(wimp_w w, int x, int y)
 	 * on screen */
 	error = xwimp_close_window(w);
 	if (error) {
-		LOG("xwimp_close_window: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_close_window: 0x%x: %s",
+		      error->errnum, error->errmess);
 		ro_warn_user("WimpError", error->errmess);
 		return;
 	}
@@ -510,7 +527,8 @@ void ro_gui_dialog_open_xy(wimp_w w, int x, int y)
  * /param parent the parent window (NULL for centre of screen)
  * /param child the child window
  */
-void ro_gui_dialog_open_centre_parent(wimp_w parent, wimp_w child) {
+static void ro_gui_dialog_open_centre_parent(wimp_w parent, wimp_w child)
+{
 	os_error *error;
 	wimp_window_state state;
 	int mid_x, mid_y;
@@ -521,7 +539,10 @@ void ro_gui_dialog_open_centre_parent(wimp_w parent, wimp_w child) {
 		state.w = parent;
 		error = xwimp_get_window_state(&state);
 		if (error) {
-			LOG("xwimp_get_window_state: 0x%x: %s", error->errnum, error->errmess);
+			NSLOG(netsurf, INFO,
+			      "xwimp_get_window_state: 0x%x: %s",
+			      error->errnum,
+			      error->errmess);
 			ro_warn_user("WimpError", error->errmess);
 			return;
 		}
@@ -538,14 +559,15 @@ void ro_gui_dialog_open_centre_parent(wimp_w parent, wimp_w child) {
 	state.w = child;
 	error = xwimp_get_window_state(&state);
 	if (error) {
-		LOG("xwimp_get_window_state: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_get_window_state: 0x%x: %s",
+		      error->errnum, error->errmess);
 		ro_warn_user("WimpError", error->errmess);
 		return;
 	}
 
 	/* move to the centre of the parent at the top of the stack */
 	dimension = state.visible.x1 - state.visible.x0;
-	scroll_width = ro_get_vscroll_width(history_window);
+	scroll_width = ro_get_vscroll_width(parent);
 	state.visible.x0 = mid_x - (dimension + scroll_width) / 2;
 	state.visible.x1 = state.visible.x0 + dimension;
 	dimension = state.visible.y1 - state.visible.y0;
@@ -567,10 +589,11 @@ void ro_gui_dialog_open_centre_parent(wimp_w parent, wimp_w child) {
 
 void ro_gui_dialog_open_persistent(wimp_w parent, wimp_w w, bool pointer) {
 
-	if (pointer)
+	if (pointer) {
 		ro_gui_dialog_open_at_pointer(w);
-	else
+	} else {
 		ro_gui_dialog_open_centre_parent(parent, w);
+	}
 
 	/* todo: use wimp_event definitions rather than special cases */
 	if ((w == dialog_pageinfo) || (w == dialog_objinfo))
@@ -600,7 +623,7 @@ void ro_gui_dialog_add_persistent(wimp_w parent, wimp_w w) {
 			return;
 		}
 	}
-	LOG("Unable to map persistent dialog to parent.");
+	NSLOG(netsurf, INFO, "Unable to map persistent dialog to parent.");
 	return;
 }
 
@@ -629,7 +652,9 @@ void ro_gui_dialog_close_persistent(wimp_w parent) {
 			w = persistent_dialog[i].dialog;
 			ro_gui_dialog_close(w);
 			if (ro_gui_wimp_event_close_window(w))
-				LOG("Persistent dialog close event: 0x%x", (unsigned)w);
+				NSLOG(netsurf, INFO,
+				      "Persistent dialog close event: 0x%x",
+				      (unsigned)w);
 			persistent_dialog[i].parent = NULL;
 			persistent_dialog[i].dialog = NULL;
 		}
@@ -646,12 +671,11 @@ void ro_gui_save_options(void)
 	nsoption_write("<NetSurf$ChoicesSave>", NULL, NULL);
 }
 
-bool ro_gui_dialog_zoom_apply(wimp_w w) {
+bool ro_gui_dialog_zoom_apply(wimp_w w)
+{
 	unsigned int scale;
-	bool all;
 
 	scale = atoi(ro_gui_get_icon_string(w, ICON_ZOOM_VALUE));
-	all = ro_gui_get_icon_selected_state(w, ICON_ZOOM_FRAMES);
 	ro_gui_window_set_scale(ro_gui_current_zoom_gui, scale * 0.01);
 	return true;
 }
@@ -707,7 +731,7 @@ static bool ro_gui_dialog_open_url_init(void)
 
 	if ((definition->icons[ICON_OPENURL_URL].flags & wimp_ICON_INDIRECTED)
 			== 0) {
-		LOG("open_url URL icon not indirected");
+		NSLOG(netsurf, INFO, "open_url URL icon not indirected");
 		xwimp_close_template();
 		die("Template");
 	}
@@ -725,7 +749,8 @@ static bool ro_gui_dialog_open_url_init(void)
 
 	error = xwimp_create_window(definition, &dialog_openurl);
 	if (error != NULL) {
-		LOG("xwimp_create_window: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_create_window: 0x%x: %s",
+		      error->errnum, error->errmess);
 		xwimp_close_template();
 		die(error->errmess);
 	}

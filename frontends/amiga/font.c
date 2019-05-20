@@ -37,7 +37,7 @@ static ULONG ami_xdpi = 72;
 
 ULONG ami_font_dpi_get_devicedpi(void)
 {
-	return ami_devicedpi;
+	return (ami_xdpi << 16) | ami_devicedpi;
 }
 
 ULONG ami_font_dpi_get_xdpi(void)
@@ -51,7 +51,8 @@ void ami_font_setdevicedpi(int id)
 	struct DisplayInfo dinfo;
 
 	if(nsoption_bool(bitmap_fonts) == true) {
-		LOG("WARNING: Using diskfont.library for text. Forcing DPI to 72.");
+		NSLOG(netsurf, INFO,
+		      "WARNING: Using diskfont.library for text. Forcing DPI to 72.");
 		nsoption_set_int(screen_ydpi, 72);
 	}
 
@@ -79,7 +80,14 @@ void ami_font_setdevicedpi(int id)
 
 				xdpi = (yres * ydpi) / xres;
 
-				LOG("XDPI = %ld, YDPI = %ld (DisplayInfo resolution %d x %d, corrected %d x %d)", xdpi, ydpi, dinfo.Resolution.x, dinfo.Resolution.y, xres, yres);
+				NSLOG(netsurf, INFO,
+				      "XDPI = %ld, YDPI = %ld (DisplayInfo resolution %d x %d, corrected %d x %d)",
+				      xdpi,
+				      ydpi,
+				      dinfo.Resolution.x,
+				      dinfo.Resolution.y,
+				      xres,
+				      yres);
 			}
 		}
 	}
@@ -115,6 +123,8 @@ void ami_font_fini(void)
 {
 	if(nsoption_bool(bitmap_fonts) == false) {
 		ami_font_bullet_fini();
+	} else {
+		ami_font_diskfont_fini();
 	}
 }
 

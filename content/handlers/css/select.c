@@ -24,6 +24,7 @@
 #include "utils/corestrings.h"
 #include "utils/log.h"
 #include "utils/nsurl.h"
+#include "netsurf/plot_style.h"
 #include "netsurf/url_db.h"
 #include "desktop/system_colour.h"
 
@@ -174,20 +175,20 @@ css_stylesheet *nscss_create_inline_style(const uint8_t *data, size_t len,
 
 	error = css_stylesheet_create(&params, &sheet);
 	if (error != CSS_OK) {
-		LOG("Failed creating sheet: %d", error);
+		NSLOG(netsurf, INFO, "Failed creating sheet: %d", error);
 		return NULL;
 	}
 
 	error = css_stylesheet_append_data(sheet, data, len);
 	if (error != CSS_OK && error != CSS_NEEDDATA) {
-		LOG("failed appending data: %d", error);
+		NSLOG(netsurf, INFO, "failed appending data: %d", error);
 		css_stylesheet_destroy(sheet);
 		return NULL;
 	}
 
 	error = css_stylesheet_data_done(sheet);
 	if (error != CSS_OK) {
-		LOG("failed completing parse: %d", error);
+		NSLOG(netsurf, INFO, "failed completing parse: %d", error);
 		css_stylesheet_destroy(sheet);
 		return NULL;
 	}
@@ -213,7 +214,8 @@ static void nscss_dom_user_data_handler(dom_node_operation operation,
 				CSS_NODE_CLONED,
 				NULL, src, dst, data);
 		if (error != CSS_OK)
-			LOG("Failed to clone libcss_node_data.");
+			NSLOG(netsurf, INFO,
+			      "Failed to clone libcss_node_data.");
 		break;
 
 	case DOM_NODE_RENAMED:
@@ -221,7 +223,8 @@ static void nscss_dom_user_data_handler(dom_node_operation operation,
 				CSS_NODE_MODIFIED,
 				NULL, src, NULL, data);
 		if (error != CSS_OK)
-			LOG("Failed to update libcss_node_data.");
+			NSLOG(netsurf, INFO,
+			      "Failed to update libcss_node_data.");
 		break;
 
 	case DOM_NODE_IMPORTED:
@@ -231,11 +234,12 @@ static void nscss_dom_user_data_handler(dom_node_operation operation,
 				CSS_NODE_DELETED,
 				NULL, src, NULL, data);
 		if (error != CSS_OK)
-			LOG("Failed to delete libcss_node_data.");
+			NSLOG(netsurf, INFO,
+			      "Failed to delete libcss_node_data.");
 		break;
 
 	default:
-		LOG("User data operation not handled.");
+		NSLOG(netsurf, INFO, "User data operation not handled.");
 		assert(0);
 	}
 }
@@ -253,6 +257,7 @@ static void nscss_dom_user_data_handler(dom_node_operation operation,
 css_select_results *nscss_get_style(nscss_select_ctx *ctx, dom_node *n,
 		uint64_t media, const css_stylesheet *inline_style)
 {
+	css_computed_style *composed;
 	css_select_results *styles;
 	int pseudo_element;
 	css_error error;
@@ -273,12 +278,17 @@ css_select_results *nscss_get_style(nscss_select_ctx *ctx, dom_node *n,
 		 * element's style */
 		error = css_computed_style_compose(ctx->parent_style,
 				styles->styles[CSS_PSEUDO_ELEMENT_NONE],
-				nscss_compute_font_size, NULL,
-				styles->styles[CSS_PSEUDO_ELEMENT_NONE]);
+				nscss_compute_font_size, ctx,
+				&composed);
 		if (error != CSS_OK) {
 			css_select_results_destroy(styles);
 			return NULL;
 		}
+
+		/* Replace select_results style with composed style */
+		css_computed_style_destroy(
+				styles->styles[CSS_PSEUDO_ELEMENT_NONE]);
+		styles->styles[CSS_PSEUDO_ELEMENT_NONE] = composed;
 	}
 
 	for (pseudo_element = CSS_PSEUDO_ELEMENT_NONE + 1;
@@ -300,41 +310,21 @@ css_select_results *nscss_get_style(nscss_select_ctx *ctx, dom_node *n,
 		error = css_computed_style_compose(
 				styles->styles[CSS_PSEUDO_ELEMENT_NONE],
 				styles->styles[pseudo_element],
-				nscss_compute_font_size, NULL,
-				styles->styles[pseudo_element]);
+				nscss_compute_font_size, ctx,
+				&composed);
 		if (error != CSS_OK) {
 			/* TODO: perhaps this shouldn't be quite so
 			 * catastrophic? */
 			css_select_results_destroy(styles);
 			return NULL;
 		}
+
+		/* Replace select_results style with composed style */
+		css_computed_style_destroy(styles->styles[pseudo_element]);
+		styles->styles[pseudo_element] = composed;
 	}
 
 	return styles;
-}
-
-/**
- * Get an initial style
- *
- * \param ctx    CSS selection context
- * \return Pointer to partial computed style, or NULL on failure
- */
-static css_computed_style *nscss_get_initial_style(nscss_select_ctx *ctx)
-{
-	css_computed_style *style;
-	css_error error;
-
-	error = css_computed_style_create(&style);
-	if (error != CSS_OK)
-		return NULL;
-
-	error = css_computed_style_initialise(style, &selection_handler, ctx);
-	if (error != CSS_OK) {
-		css_computed_style_destroy(style);
-		return NULL;
-	}
-
-	return style;
 }
 
 /**
@@ -347,21 +337,26 @@ static css_computed_style *nscss_get_initial_style(nscss_select_ctx *ctx)
 css_computed_style *nscss_get_blank_style(nscss_select_ctx *ctx,
 		const css_computed_style *parent)
 {
-	css_computed_style *partial;
+	css_computed_style *partial, *composed;
 	css_error error;
 
-	partial = nscss_get_initial_style(ctx);
-	if (partial == NULL)
-		return NULL;
-
-	error = css_computed_style_compose(parent, partial,
-			nscss_compute_font_size, NULL, partial);
+	error = css_select_default_style(ctx->ctx,
+			&selection_handler, ctx, &partial);
 	if (error != CSS_OK) {
-		css_computed_style_destroy(partial);
 		return NULL;
 	}
 
-	return partial;
+	/* TODO: Do we really need to compose?  Initial style shouldn't
+	 * have any inherited properties. */
+	error = css_computed_style_compose(parent, partial,
+			nscss_compute_font_size, ctx, &composed);
+	css_computed_style_destroy(partial);
+	if (error != CSS_OK) {
+		css_computed_style_destroy(composed);
+		return NULL;
+	}
+
+	return composed;
 }
 
 /**
@@ -427,14 +422,37 @@ css_error nscss_compute_font_size(void *pw, const css_hint *parent,
 				FDIV(parent_size.value, FLTTOFIX(1.2));
 		size->data.length.unit = parent_size.unit;
 	} else if (size->data.length.unit == CSS_UNIT_EM ||
-			size->data.length.unit == CSS_UNIT_EX) {
+			size->data.length.unit == CSS_UNIT_EX ||
+			size->data.length.unit == CSS_UNIT_CAP ||
+			size->data.length.unit == CSS_UNIT_CH ||
+			size->data.length.unit == CSS_UNIT_IC) {
 		size->data.length.value =
 			FMUL(size->data.length.value, parent_size.value);
 
-		if (size->data.length.unit == CSS_UNIT_EX) {
+		switch (size->data.length.unit) {
+		case CSS_UNIT_EX:
 			/* 1ex = 0.6em in NetSurf */
 			size->data.length.value = FMUL(size->data.length.value,
 					FLTTOFIX(0.6));
+			break;
+		case CSS_UNIT_CAP:
+			/* Height of captals.  1cap = 0.9em in NetSurf. */
+			size->data.length.value = FMUL(size->data.length.value,
+					FLTTOFIX(0.9));
+			break;
+		case CSS_UNIT_CH:
+			/* Width of '0'.  1ch = 0.4em in NetSurf. */
+			size->data.length.value = FMUL(size->data.length.value,
+					FLTTOFIX(0.4));
+			break;
+		case CSS_UNIT_IC:
+			/* Width of U+6C43.  1ic = 1.1em in NetSurf. */
+			size->data.length.value = FMUL(size->data.length.value,
+					FLTTOFIX(1.1));
+			break;
+		default:
+			/* No scaling required for EM. */
+			break;
 		}
 
 		size->data.length.unit = parent_size.unit;
@@ -442,6 +460,25 @@ css_error nscss_compute_font_size(void *pw, const css_hint *parent,
 		size->data.length.value = FDIV(FMUL(size->data.length.value,
 				parent_size.value), INTTOFIX(100));
 		size->data.length.unit = parent_size.unit;
+	} else if (size->data.length.unit == CSS_UNIT_REM) {
+		nscss_select_ctx *ctx = pw;
+		if (parent == NULL) {
+			size->data.length.value = parent_size.value;
+			size->data.length.unit = parent_size.unit;
+		} else {
+			css_computed_font_size(ctx->root_style,
+					&parent_size.value,
+					&size->data.length.unit);
+			size->data.length.value = FMUL(
+					size->data.length.value,
+					parent_size.value);
+		}
+	} else if (size->data.length.unit == CSS_UNIT_RLH) {
+		/** TODO: Convert root element line-height to absolute value. */
+		size->data.length.value = FMUL(size->data.length.value, FDIV(
+				INTTOFIX(nsoption_int(font_size)),
+				INTTOFIX(10)));
+		size->data.length.unit = CSS_UNIT_PT;
 	}
 
 	size->status = CSS_FONT_SIZE_DIMENSION;

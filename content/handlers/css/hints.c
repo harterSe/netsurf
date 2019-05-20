@@ -748,6 +748,8 @@ static void css_hint_vertical_align_table_cells(
 			corestring_dom_valign, &attr);
 
 	if (err == DOM_NO_ERR && attr != NULL) {
+		hint->data.length.value = 0;
+		hint->data.length.unit = CSS_UNIT_PX;
 		if (dom_string_caseless_lwc_isequal(attr,
 				corestring_lwc_top)) {
 			hint->prop = CSS_PROP_VERTICAL_ALIGN;
@@ -882,6 +884,7 @@ static void css_hint_margin_left_right_align_center(
 			corestring_dom_align, &attr);
 
 	if (exc == DOM_NO_ERR && attr != NULL) {
+		memset(hint, 0, sizeof(*hint) * 2);
 		if (dom_string_caseless_lwc_isequal(attr,
 						corestring_lwc_center) ||
 				dom_string_caseless_lwc_isequal(attr,
@@ -1022,6 +1025,7 @@ static void css_hint_margin_left_right_hr(
 				corestring_dom_align, &attr);
 
 	if (exc == DOM_NO_ERR && attr != NULL) {
+		memset(hint, 0, sizeof(*hint) * 2);
 		if (dom_string_caseless_lwc_isequal(attr,
 				corestring_lwc_left)) {
 			hint->prop = CSS_PROP_MARGIN_LEFT;
@@ -1584,6 +1588,7 @@ css_error node_presentational_hint(void *pw, void *node,
 		css_hint_width(pw, node);
 		break;
 	case DOM_HTML_ELEMENT_TYPE_HR:
+		css_hint_width(pw, node);
 		css_hint_margin_left_right_hr(pw, node);
 		break;
 	case DOM_HTML_ELEMENT_TYPE_TEXTAREA:
@@ -1612,7 +1617,7 @@ css_error node_presentational_hint(void *pw, void *node,
 	}
 
 #ifdef LOG_STATS
-	LOG("Properties with hints: %i", hint_ctx.len);
+	NSLOG(netsurf, INFO, "Properties with hints: %i", hint_ctx.len);
 #endif
 
 	css_hint_get_hints(hints, nhints);

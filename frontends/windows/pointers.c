@@ -25,7 +25,6 @@
 #include "utils/errors.h"
 #include "utils/nsurl.h"
 #include "utils/log.h"
-#include "utils/utils.h"
 #include "utils/corestrings.h"
 #include "utils/url.h"
 #include "utils/file.h"
@@ -34,7 +33,6 @@
 
 #include "windows/schedule.h"
 #include "windows/window.h"
-#include "windows/filetype.h"
 #include "windows/pointers.h"
 
 struct nsws_pointers {

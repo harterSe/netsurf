@@ -26,6 +26,7 @@
 #include "utils/utf8.h"
 #include "netsurf/utf8.h"
 #include "netsurf/layout.h"
+#include "netsurf/plot_style.h"
 
 #include "framebuffer/gui.h"
 #include "framebuffer/font.h"
@@ -211,7 +212,7 @@ fb_get_font_size(const plot_font_style_t *fstyle)
 {
 	int size = fstyle->size * 10 /
 			(((nsoption_int(font_min_size) * 3 +
-			   nsoption_int(font_size)) / 4) * FONT_SIZE_SCALE);
+			   nsoption_int(font_size)) / 4) * PLOT_STYLE_SCALE);
 	if (size > 2)
 		size = 2;
 	else if (size <= 0)
@@ -269,6 +270,7 @@ fb_get_glyph(uint32_t ucs4, enum fb_font_style style, int scale)
 				break;
 			}
 		}
+		/* Fall through. */
 	case FB_BOLD:
 		section = fb_bold_section_table[ucs4 / 256];
 		if (section != 0 || ucs4 / 256 == 0) {
@@ -279,6 +281,7 @@ fb_get_glyph(uint32_t ucs4, enum fb_font_style style, int scale)
 				break;
 			}
 		}
+		/* Fall through. */
 	case FB_ITALIC:
 		section = fb_italic_section_table[ucs4 / 256];
 		if (section != 0 || ucs4 / 256 == 0) {
@@ -289,6 +292,7 @@ fb_get_glyph(uint32_t ucs4, enum fb_font_style style, int scale)
 				break;
 			}
 		}
+		/* Fall through. */
 	case FB_REGULAR:
 		section = fb_regular_section_table[ucs4 / 256];
 		if (section != 0 || ucs4 / 256 == 0) {
@@ -299,6 +303,7 @@ fb_get_glyph(uint32_t ucs4, enum fb_font_style style, int scale)
 				break;
 			}
 		}
+		/* Fall through. */
 	default:
 		glyph_data = get_codepoint(ucs4, style & FB_ITALIC);
 		break;
@@ -364,7 +369,7 @@ fb_font_width(const plot_font_style_t *fstyle,
         }
 
 	*width *= fb_get_font_size(fstyle);
-	return true;
+	return NSERROR_OK;
 }
 
 
@@ -397,7 +402,7 @@ fb_font_position(const plot_font_style_t *fstyle,
         *actual_x = x_pos;
 
         *char_offset = nxtchr;
-	return true;
+	return NSERROR_OK;
 }
 
 
@@ -455,7 +460,7 @@ fb_font_split(const plot_font_style_t *fstyle,
                          * found a space; return previous space */
                         *actual_x = last_space_x;
                         *char_offset = last_space_idx;
-                        return true;
+                        return NSERROR_OK;
                 }
 
                 nxtchr = utf8_next(string, length, nxtchr);
@@ -463,7 +468,7 @@ fb_font_split(const plot_font_style_t *fstyle,
 
         *char_offset = nxtchr;
 
-	return true;
+	return NSERROR_OK;
 }
 
 

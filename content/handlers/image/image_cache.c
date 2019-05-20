@@ -16,13 +16,18 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * \file
+ * Cache implementation for bitmap images decoded into frontend format.
+ */
+
 #include <assert.h>
-#include <inttypes.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
 
+#include "netsurf/inttypes.h"
 #include "utils/utils.h"
 #include "utils/log.h"
 #include "netsurf/misc.h"
@@ -34,22 +39,26 @@
 #include "image/image_cache.h"
 #include "image/image.h"
 
-/** Age of an entry within the cache
+/**
+ * Age of an entry within the cache
  *
  * type deffed away so it can be readily changed later perhaps to a
  * wallclock time structure.
  */
 typedef unsigned int cache_age;
 
-/** Image cache entry
+/**
+ * Image cache entry
  */
 struct image_cache_entry_s {
-	struct image_cache_entry_s *next; /* next cache entry in list */
-	struct image_cache_entry_s *prev; /* previous cache entry in list */
+	struct image_cache_entry_s *next; /**< next cache entry in list */
+	struct image_cache_entry_s *prev; /**< previous cache entry in list */
 
-	struct content *content; /** content is used as a key */
-	struct bitmap *bitmap; /** associated bitmap entry */
-	/** Conversion routine */
+	/** content is used as a key */
+	struct content *content;
+	/** associated bitmap entry */
+	struct bitmap *bitmap;
+	/** routine to convert content into bitmap */
 	image_cache_convert_fn *convert;
 
 	/* Statistics for replacement algorithm */
@@ -62,7 +71,8 @@ struct image_cache_entry_s {
 	int conversion_count; /**< Number of times image has been converted */
 };
 
-/** Current state of the cache.
+/**
+ * Current state of the cache.
  *
  * Global state of the cache. entries "age" is determined based on a
  * monotonically incrementing operation count. This avoids issues with
@@ -90,12 +100,12 @@ struct image_cache_s {
 
 	/** Maximum size of bitmaps allocated at any one time */
 	size_t max_bitmap_size;
-	/** The number of objects when maximum bitmap usage occoured */
+	/** The number of objects when maximum bitmap usage occurred */
 	int max_bitmap_size_count;
 
 	/** Maximum count of bitmaps allocated at any one time */
 	int max_bitmap_count;
-	/** The size of the bitmaps when the max count occoured */
+	/** The size of the bitmaps when the max count occurred */
 	size_t max_bitmap_count_size;
 
 	/** Bitmap was not available at plot time required conversion */
@@ -130,7 +140,11 @@ struct image_cache_s {
 static struct image_cache_s *image_cache = NULL;
 
 
-/** Find the nth cache entry
+/**
+ * Find a cache entry by index.
+ *
+ * \param entryn index of cache entry
+ * \return cache entry at index or NULL if not found.
  */
 static struct image_cache_entry_s *image_cache__findn(int entryn)
 {
@@ -144,7 +158,12 @@ static struct image_cache_entry_s *image_cache__findn(int entryn)
 	return found;
 }
 
-/** Find the cache entry for a content
+
+/**
+ * Find the cache entry for a content
+ *
+ * \param c The content to get an entry for
+ * \return The image cache entry or NULL if not found.
  */
 static struct image_cache_entry_s *image_cache__find(const struct content *c)
 {
@@ -157,6 +176,11 @@ static struct image_cache_entry_s *image_cache__find(const struct content *c)
 	return found;
 }
 
+/**
+ * Update the image cache statistics with an entry.
+ *
+ * \param centry The image cache entry to update the stats with.
+ */
 static void image_cache_stats_bitmap_add(struct image_cache_entry_s *centry)
 {
 	centry->bitmap_age = image_cache->current_age;
@@ -223,11 +247,21 @@ static void image_cache__unlink(struct image_cache_entry_s *centry)
 	}
 }
 
+/**
+ * free bitmap from an image cache entry
+ *
+ * \param centry The image cache entry to free bitmap from.
+ */
 static void image_cache__free_bitmap(struct image_cache_entry_s *centry)
 {
 	if (centry->bitmap != NULL) {
 #ifdef IMAGE_CACHE_VERBOSE
-		LOG("Freeing bitmap %p size %d age %d redraw count %d", centry->bitmap, centry->bitmap_size, image_cache->current_age - centry->bitmap_age, centry->redraw_count);
+		NSLOG(netsurf, INFO,
+		      "Freeing bitmap %p size %d age %d redraw count %d",
+		      centry->bitmap,
+		      centry->bitmap_size,
+		      image_cache->current_age - centry->bitmap_age,
+		      centry->redraw_count);
 #endif
 		guit->bitmap->destroy(centry->bitmap);
 		centry->bitmap = NULL;
@@ -240,11 +274,15 @@ static void image_cache__free_bitmap(struct image_cache_entry_s *centry)
 
 }
 
-/* free cache entry */
+/**
+ * free image cache entry
+ *
+ * \param centry The image cache entry to free.
+ */
 static void image_cache__free_entry(struct image_cache_entry_s *centry)
 {
 #ifdef IMAGE_CACHE_VERBOSE
-	LOG("freeing %p ", centry);
+	NSLOG(netsurf, INFO, "freeing %p ", centry);
 #endif
 
 	if (centry->redraw_count == 0) {
@@ -258,7 +296,11 @@ static void image_cache__free_entry(struct image_cache_entry_s *centry)
 	free(centry);
 }
 
-/** Cache cleaner */
+/**
+ * Image cache cleaner
+ *
+ * \param icache The image cache context.
+ */
 static void image_cache__clean(struct image_cache_s *icache)
 {
 	struct image_cache_entry_s *centry = icache->entries;
@@ -277,7 +319,11 @@ static void image_cache__clean(struct image_cache_s *icache)
 	}
 }
 
-/** Cache background scheduled callback. */
+/**
+ * Cache background scheduled callback.
+ *
+ * \param p The image cache context.
+ */
 static void image_cache__background_update(void *p)
 {
 	struct image_cache_s *icache = p;
@@ -286,7 +332,7 @@ static void image_cache__background_update(void *p)
 	icache->current_age += icache->params.bg_clean_time;
 
 #ifdef IMAGE_CACHE_VERBOSE
-	LOG("Cache age %ds", icache->current_age / 1000);
+	NSLOG(netsurf, INFO, "Cache age %ds", icache->current_age / 1000);
 #endif
 
 	image_cache__clean(icache);
@@ -338,13 +384,16 @@ bool image_cache_speculate(struct content *c)
 	if ((image_cache->total_bitmap_size < image_cache->params.limit) &&
 	    (c->size <= image_cache->params.speculative_small)) {
 #ifdef IMAGE_CACHE_VERBOSE
-		LOG("content size (%d) is smaller than minimum (%d)", c->size, SPECULATE_SMALL);
+		NSLOG(netsurf, INFO,
+		      "content size (%d) is smaller than minimum (%d)",
+		      c->size,
+		      SPECULATE_SMALL);
 #endif
 		decision = true;
 	}
 
 #ifdef IMAGE_CACHE_VERBOSE
-	LOG("returning %d", decision);
+	NSLOG(netsurf, INFO, "returning %d", decision);
 #endif
 	return decision;
 }
@@ -377,8 +426,10 @@ image_cache_init(const struct image_cache_parameters *image_cache_parameters)
 				image_cache__background_update,
 				image_cache);
 
-	LOG("Image cache initilised with a limit of %" PRIsizet " hysteresis of %"PRIsizet,
-	    image_cache->params.limit, image_cache->params.hysteresis);
+	NSLOG(netsurf, INFO,
+	      "Image cache initialised with a limit of %"PRIsizet" hysteresis of %"PRIsizet,
+	      image_cache->params.limit,
+	      image_cache->params.hysteresis);
 
 	return NSERROR_OK;
 }
@@ -390,8 +441,8 @@ nserror image_cache_fini(void)
 
 	guit->misc->schedule(-1, image_cache__background_update, image_cache);
 
-	LOG("Size at finish %" PRIsizet " (in %d)",
-	    image_cache->total_bitmap_size, image_cache->bitmap_count);
+	NSLOG(netsurf, INFO, "Size at finish %"PRIsizet" (in %d)",
+	      image_cache->total_bitmap_size, image_cache->bitmap_count);
 
 	while (image_cache->entries != NULL) {
 		image_cache__free_entry(image_cache->entries);
@@ -401,11 +452,13 @@ nserror image_cache_fini(void)
 		image_cache->miss_count +
 		image_cache->fail_count;
 
-	LOG("Age %ds", image_cache->current_age / 1000);
-	LOG("Peak size %" PRIsizet " (in %d)",
-	    image_cache->max_bitmap_size, image_cache->max_bitmap_size_count);
-	LOG("Peak image count %d (size %" PRIsizet ")",
-	    image_cache->max_bitmap_count, image_cache->max_bitmap_count_size);
+	NSLOG(netsurf, INFO, "Age %ds", image_cache->current_age / 1000);
+	NSLOG(netsurf, INFO, "Peak size %"PRIsizet" (in %d)",
+	      image_cache->max_bitmap_size,
+	      image_cache->max_bitmap_size_count);
+	NSLOG(netsurf, INFO, "Peak image count %d (size %"PRIsizet")",
+	      image_cache->max_bitmap_count,
+	      image_cache->max_bitmap_count_size);
 
 	if (op_count > 0) {
 		uint64_t op_size;
@@ -414,35 +467,39 @@ nserror image_cache_fini(void)
 			image_cache->miss_size +
 			image_cache->fail_size;
 
-		LOG("Cache total/hit/miss/fail (counts) %d/%d/%d/%d (100%%/%d%%/%d%%/%d%%)",
-		    op_count,
-		    image_cache->hit_count,
-		    image_cache->miss_count,
-		    image_cache->fail_count,
-		    (image_cache->hit_count * 100) / op_count,
-		    (image_cache->miss_count * 100) / op_count,
-		    (image_cache->fail_count * 100) / op_count);
-		LOG("Cache total/hit/miss/fail (size) %"PRIu64"/%"PRIu64"/%"PRIu64"/%"PRIu64" (100%%/%"PRId64"%%/%"PRId64"%%/%"PRId64"%%)",
-		    op_size,
-		    image_cache->hit_size,
-		    image_cache->miss_size,
-		    image_cache->fail_size,
-		    (image_cache->hit_size * 100) / op_size,
-		    (image_cache->miss_size * 100) / op_size,
-		    (image_cache->fail_size * 100) / op_size);
+		NSLOG(netsurf, INFO,
+		      "Cache total/hit/miss/fail (counts) %d/%d/%d/%d (100%%/%d%%/%d%%/%d%%)",
+		      op_count,
+		      image_cache->hit_count,
+		      image_cache->miss_count,
+		      image_cache->fail_count,
+		      (image_cache->hit_count * 100) / op_count,
+		      (image_cache->miss_count * 100) / op_count,
+		      (image_cache->fail_count * 100) / op_count);
+		NSLOG(netsurf, INFO,
+		      "Cache total/hit/miss/fail (size) %"PRIu64"/%"PRIu64"/%"PRIu64"/%"PRIu64" (100%%/%"PRId64"%%/%"PRId64"%%/%"PRId64"%%)",
+		      op_size,
+		      image_cache->hit_size,
+		      image_cache->miss_size,
+		      image_cache->fail_size,
+		      (image_cache->hit_size * 100) / op_size,
+		      (image_cache->miss_size * 100) / op_size,
+		      (image_cache->fail_size * 100) / op_size);
 	}
 
-	LOG("Total images never rendered: %d (includes %d that were converted)",
-	    image_cache->total_unrendered,
-	    image_cache->specultive_miss_count);
+	NSLOG(netsurf, INFO,
+	      "Total images never rendered: %d (includes %d that were converted)",
+	      image_cache->total_unrendered,
+	      image_cache->specultive_miss_count);
 
-	LOG("Total number of excessive conversions: %d (from %d images converted more than once)",
-	    image_cache->total_extra_conversions,
-	    image_cache->total_extra_conversions_count);
+	NSLOG(netsurf, INFO,
+	      "Total number of excessive conversions: %d (from %d images converted more than once)",
+	      image_cache->total_extra_conversions,
+	      image_cache->total_extra_conversions_count);
 
-	LOG("Bitmap of size %d had most (%d) conversions",
-	    image_cache->peak_conversions_size,
-	    image_cache->peak_conversions);
+	NSLOG(netsurf, INFO, "Bitmap of size %d had most (%d) conversions",
+	      image_cache->peak_conversions_size,
+	      image_cache->peak_conversions);
 
 	free(image_cache);
 
@@ -474,7 +531,8 @@ nserror image_cache_add(struct content *content,
 		centry->bitmap_size = content->width * content->height * 4;
 	}
 
-	LOG("centry %p, content %p, bitmap %p", centry, content, bitmap);
+	NSLOG(netsurf, INFO, "centry %p, content %p, bitmap %p", centry,
+	      content, bitmap);
 
 	centry->convert = convert;
 
@@ -513,7 +571,8 @@ nserror image_cache_remove(struct content *content)
 	/* get the cache entry */
 	centry = image_cache__find(content);
 	if (centry == NULL) {
-		LOG("Could not find cache entry for content (%p)", content);
+		NSLOG(netsurf, INFO,
+		      "Could not find cache entry for content (%p)", content);
 		return NSERROR_NOT_FOUND;
 	}
 
@@ -577,7 +636,7 @@ case chr :					\
 			FMTCHR('b', PRIssizet, params.hysteresis);
 			FMTCHR('c', PRIssizet, total_bitmap_size);
 			FMTCHR('d', "d", bitmap_count);
-			FMTCHR('e', "d", current_age / 1000);
+			FMTCHR('e', "u", current_age / 1000);
 			FMTCHR('f', PRIssizet, max_bitmap_size);
 			FMTCHR('g', "d", max_bitmap_size_count);
 			FMTCHR('h', "d", max_bitmap_count);
@@ -586,7 +645,7 @@ case chr :					\
 
 			case 'j':
 				slen += snprintf(string + slen, size - slen,
-						 "%d", pct?100:op_count);
+						 "%u", pct?100:op_count);
 				break;
 
 			FMTPCHR('k', "d", hit_count, op_count);
@@ -606,7 +665,7 @@ case chr :					\
 			FMTCHR('t', "d", specultive_miss_count);
 			FMTCHR('u', "d", total_extra_conversions);
 			FMTCHR('v', "d", total_extra_conversions_count);
-			FMTCHR('w', "d", peak_conversions_size);
+			FMTCHR('w', "u", peak_conversions_size);
 			FMTCHR('x', "d", peak_conversions);
 
 
@@ -629,8 +688,11 @@ case chr :					\
 }
 
 /* exported interface documented in image_cache.h */
-int image_cache_snentryf(char *string, size_t size, unsigned int entryn,
-		const char *fmt)
+int
+image_cache_snentryf(char *string,
+		     size_t size,
+		     unsigned int entryn,
+		     const char *fmt)
 {
 	struct image_cache_entry_s *centry;
 	size_t slen = 0; /* current output string length */
@@ -647,7 +709,7 @@ int image_cache_snentryf(char *string, size_t size, unsigned int entryn,
 			switch (fmt[fmtc]) {
 			case 'e':
 				slen += snprintf(string + slen, size - slen,
-						"%d", entryn);
+						"%u", entryn);
 				break;
 
 			case 'r':
@@ -678,7 +740,7 @@ int image_cache_snentryf(char *string, size_t size, unsigned int entryn,
 
 			case 'U':
 				slen += snprintf(string + slen, size - slen,
-				    		"%s", nsurl_access(llcache_handle_get_url(centry->content->llcache)));
+						"%s", nsurl_access(llcache_handle_get_url(centry->content->llcache)));
 				break;
 
 			case 'o':
@@ -690,20 +752,20 @@ int image_cache_snentryf(char *string, size_t size, unsigned int entryn,
 							centry->content->
 								llcache),
 							NSURL_HOST);
-					
+
 					slen += snprintf(string + slen,
 							size - slen, "%s",
-				    			lwc_string_data(
-				    				origin));
+							lwc_string_data(
+								origin));
 
 					lwc_string_unref(origin);
 				} else {
 					slen += snprintf(string + slen,
 							size - slen, "%s",
-				    			"localhost");
+							"localhost");
 				}
 				break;
-			
+
 			case 's':
 				if (centry->bitmap != NULL) {
 					slen += snprintf(string + slen,
@@ -743,7 +805,8 @@ bool image_cache_redraw(struct content *c,
 	/* get the cache entry */
 	centry = image_cache__find(c);
 	if (centry == NULL) {
-		LOG("Could not find cache entry for content (%p)", c);
+		NSLOG(netsurf, INFO,
+		      "Could not find cache entry for content (%p)", c);
 		return false;
 	}
 
@@ -774,6 +837,7 @@ bool image_cache_redraw(struct content *c,
 	return image_bitmap_plot(centry->bitmap, data, clip, ctx);
 }
 
+/* exported interface documented in image_cache.h */
 void image_cache_destroy(struct content *content)
 {
 	struct image_cache_entry_s *centry;
@@ -781,17 +845,20 @@ void image_cache_destroy(struct content *content)
 	/* get the cache entry */
 	centry = image_cache__find(content);
 	if (centry == NULL) {
-		LOG("Could not find cache entry for content (%p)", content);
+		NSLOG(netsurf, INFO,
+		      "Could not find cache entry for content (%p)", content);
 	} else {
 		image_cache__free_entry(centry);
 	}
 }
 
+/* exported interface documented in image_cache.h */
 void *image_cache_get_internal(const struct content *c, void *context)
 {
 	return image_cache_get_bitmap(c);
 }
 
+/* exported interface documented in image_cache.h */
 content_type image_cache_content_type(void)
 {
 	return CONTENT_IMAGE;

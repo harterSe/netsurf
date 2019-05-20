@@ -34,7 +34,7 @@
 #include "netsurf/plotters.h"
 #include "content/hlcache.h"
 #include "css/utils.h"
-#include "render/box.h"
+#include "html/box.h"
 
 #include "desktop/print.h"
 #include "desktop/printer.h"
@@ -126,8 +126,10 @@ print_apply_settings(hlcache_handle *content, struct print_settings *settings)
 
 	content_reformat(content, false, page_content_width, 0);
 
-	LOG("New layout applied.New height = %d ; New width = %d ",
-	    content_get_height(content), content_get_width(content));
+	NSLOG(netsurf, INFO,
+	      "New layout applied.New height = %d ; New width = %d ",
+	      content_get_height(content),
+	      content_get_width(content));
 
 	return true;
 }
@@ -179,7 +181,8 @@ bool print_draw_next_page(const struct printer *printer,
 	struct redraw_context ctx = {
 		.interactive = false,
 		.background_images = !nsoption_bool(remove_backgrounds),
-		.plot = printer->plotter
+		.plot = printer->plotter,
+		.priv = settings->priv
 	};
 
 	html_redraw_printing_top_cropped = INT_MAX;
@@ -254,6 +257,11 @@ struct print_settings *print_make_settings(print_configuration configuration,
 	struct print_settings *settings;
 	css_fixed length = 0;
 	css_unit unit = CSS_UNIT_MM;
+	nscss_len_ctx len_ctx = {
+		.vw = DEFAULT_PAGE_WIDTH,
+		.vh = DEFAULT_PAGE_HEIGHT,
+		.root_style = NULL,
+	};
 
 	switch (configuration){
 		case PRINT_DEFAULT:
@@ -269,17 +277,17 @@ struct print_settings *print_make_settings(print_configuration configuration,
 			settings->scale = DEFAULT_EXPORT_SCALE;
 
 			length = INTTOFIX(DEFAULT_MARGIN_LEFT_MM);
-			settings->margins[MARGINLEFT] =
-					nscss_len2px(length, unit, NULL);
+			settings->margins[MARGINLEFT] = nscss_len2px(
+					&len_ctx, length, unit, NULL);
 			length = INTTOFIX(DEFAULT_MARGIN_RIGHT_MM);
-			settings->margins[MARGINRIGHT] =
-					nscss_len2px(length, unit, NULL);
+			settings->margins[MARGINRIGHT] = nscss_len2px(
+					&len_ctx, length, unit, NULL);
 			length = INTTOFIX(DEFAULT_MARGIN_TOP_MM);
-			settings->margins[MARGINTOP] =
-					nscss_len2px(length, unit, NULL);
+			settings->margins[MARGINTOP] = nscss_len2px(
+					&len_ctx, length, unit, NULL);
 			length = INTTOFIX(DEFAULT_MARGIN_BOTTOM_MM);
-			settings->margins[MARGINBOTTOM] =
-					nscss_len2px(length, unit, NULL);
+			settings->margins[MARGINBOTTOM] = nscss_len2px(
+					&len_ctx, length, unit, NULL);
 			break;
 		/* use settings from the Export options tab */
 		case PRINT_OPTIONS:
@@ -295,17 +303,17 @@ struct print_settings *print_make_settings(print_configuration configuration,
 			settings->scale = (float)nsoption_int(export_scale) / 100;
 
 			length = INTTOFIX(nsoption_int(margin_left));
-			settings->margins[MARGINLEFT] =
-					nscss_len2px(length, unit, NULL);
+			settings->margins[MARGINLEFT] = nscss_len2px(
+					&len_ctx, length, unit, NULL);
 			length = INTTOFIX(nsoption_int(margin_right));
-			settings->margins[MARGINRIGHT] =
-					nscss_len2px(length, unit, NULL);
+			settings->margins[MARGINRIGHT] = nscss_len2px(
+					&len_ctx, length, unit, NULL);
 			length = INTTOFIX(nsoption_int(margin_top));
-			settings->margins[MARGINTOP] =
-					nscss_len2px(length, unit, NULL);
+			settings->margins[MARGINTOP] = nscss_len2px(
+					&len_ctx, length, unit, NULL);
 			length = INTTOFIX(nsoption_int(margin_bottom));
-			settings->margins[MARGINBOTTOM] =
-					nscss_len2px(length, unit, NULL);
+			settings->margins[MARGINBOTTOM] = nscss_len2px(
+					&len_ctx, length, unit, NULL);
 			break;
 		default:
 			return NULL;

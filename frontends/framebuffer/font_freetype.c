@@ -17,12 +17,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <inttypes.h>
 #include <assert.h>
 
 #include <ft2build.h>
 #include FT_CACHE_H
 
+#include "netsurf/inttypes.h"
 #include "utils/filepath.h"
 #include "utils/utf8.h"
 #include "utils/log.h"
@@ -30,6 +30,7 @@
 #include "netsurf/utf8.h"
 #include "netsurf/layout.h"
 #include "netsurf/browser_window.h"
+#include "netsurf/plot_style.h"
 
 #include "framebuffer/gui.h"
 #include "framebuffer/font.h"
@@ -89,12 +90,13 @@ ft_face_requester(FTC_FaceID face_id,
 
         error = FT_New_Face(library, fb_face->fontfile, fb_face->index, face); 
         if (error) {
-                LOG("Could not find font (code %d)", error);
+                NSLOG(netsurf, INFO, "Could not find font (code %d)", error);
         } else {
 
                 error = FT_Select_Charmap(*face, FT_ENCODING_UNICODE);
                 if (error) {
-                        LOG("Could not select charmap (code %d)", error);
+                        NSLOG(netsurf, INFO,
+                              "Could not select charmap (code %d)", error);
                 } else {
                         for (cidx = 0; cidx < (*face)->num_charmaps; cidx++) {
                                 if ((*face)->charmap == (*face)->charmaps[cidx]) {
@@ -104,7 +106,7 @@ ft_face_requester(FTC_FaceID face_id,
                         }
                 }
         }
-        LOG("Loaded face from %s", fb_face->fontfile);
+        NSLOG(netsurf, INFO, "Loaded face from %s", fb_face->fontfile);
 
         return error;
 }
@@ -131,7 +133,8 @@ fb_new_face(const char *option, const char *resname, const char *fontname)
 
         error = FTC_Manager_LookupFace(ft_cmanager, (FTC_FaceID)newf, &aface);
         if (error) {
-                LOG("Could not find font face %s (code %d)", fontname, error);
+                NSLOG(netsurf, INFO, "Could not find font face %s (code %d)",
+                      fontname, error);
                 free(newf->fontfile);
                 free(newf);
                 newf = NULL;
@@ -151,7 +154,8 @@ bool fb_font_init(void)
         /* freetype library initialise */
         error = FT_Init_FreeType( &library ); 
         if (error) {
-                LOG("Freetype could not initialised (code %d)", error);
+                NSLOG(netsurf, INFO,
+                      "Freetype could not initialised (code %d)", error);
                 return false;
         }
 
@@ -171,7 +175,9 @@ bool fb_font_init(void)
                                 NULL, 
                                 &ft_cmanager);
         if (error) {
-                LOG("Freetype could not initialise cache manager (code %d)", error);
+                NSLOG(netsurf, INFO,
+                      "Freetype could not initialise cache manager (code %d)",
+                      error);
                 FT_Done_FreeType(library);
                 return false;
         }
@@ -188,7 +194,7 @@ bool fb_font_init(void)
 			      NETSURF_FB_FONT_SANS_SERIF);
 	if (fb_face == NULL) {
 		/* The sans serif font is the default and must be found. */
-                LOG("Could not find the default font");
+                NSLOG(netsurf, INFO, "Could not find the default font");
                 FTC_Manager_Done(ft_cmanager);
                 FT_Done_FreeType(library);
                 return false;
@@ -386,7 +392,7 @@ static void fb_fill_scalar(const plot_font_style_t *fstyle, FTC_Scaler srec)
 
         srec->face_id = (FTC_FaceID)fb_faces[selected_face];
 
-	srec->width = srec->height = (fstyle->size * 64) / FONT_SIZE_SCALE;
+	srec->width = srec->height = (fstyle->size * 64) / PLOT_STYLE_SCALE;
 	srec->pixel = 0;
 
 	srec->x_res = srec->y_res = browser_get_dpi();
@@ -444,8 +450,7 @@ fb_font_width(const plot_font_style_t *fstyle,
 
                 *width += glyph->advance.x >> 16;
         }
-
-	return true;
+	return NSERROR_OK;
 }
 
 
@@ -481,7 +486,7 @@ fb_font_position(const plot_font_style_t *fstyle,
                 *actual_x = prev_x;
 
         *char_offset = nxtchr;
-	return true;
+	return NSERROR_OK;
 }
 
 
@@ -537,7 +542,7 @@ fb_font_split(const plot_font_style_t *fstyle,
                          * found a space; return previous space */
                         *actual_x = last_space_x;
                         *char_offset = last_space_idx;
-                        return true;
+                        return NSERROR_OK;
                 }
 
                 nxtchr = utf8_next(string, length, nxtchr);
@@ -545,7 +550,7 @@ fb_font_split(const plot_font_style_t *fstyle,
 
         *char_offset = nxtchr;
 
-	return true;
+	return NSERROR_OK;
 }
 
 static struct gui_layout_table layout_table = {

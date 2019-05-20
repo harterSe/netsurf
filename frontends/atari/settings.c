@@ -32,7 +32,8 @@
 #include "utils/dirent.h"
 #include "utils/nsoption.h"
 #include "utils/log.h"
-#include "desktop/plot_style.h"
+#include "utils/utils.h"
+#include "netsurf/plot_style.h"
 
 #include "atari/gui.h"
 #include "atari/res/netsurf.rsh"
@@ -171,7 +172,7 @@ static char **read_locales(void)
         atari_warn_user("Failed to load locales: %s",buf);
         return(NULL);
     } else {
-        LOG("Reading locales from: %s...", buf);
+        NSLOG(netsurf, INFO, "Reading locales from: %s...", buf);
     }
 
     /* Count items: */
@@ -256,15 +257,15 @@ static void display_settings(void)
 
     /* "Cache" tab: */
     tmp_option_memory_cache_size = nsoption_int(memory_cache_size) / (1024*1024);
-    snprintf( spare, 255, "%d", tmp_option_memory_cache_size );
+    snprintf( spare, 255, "%u", tmp_option_memory_cache_size );
     set_text( SETTINGS_STR_MAX_MEM_CACHE, spare, 4 );
 
     tmp_option_disc_cache_size = nsoption_int(disc_cache_size) / (1024*1024);
-    snprintf( spare, 255, "%d", tmp_option_disc_cache_size );
+    snprintf( spare, 255, "%u", tmp_option_disc_cache_size );
     set_text( SETTINGS_STR_MAX_DISC_CACHE, spare, 4 );
 
     tmp_option_disc_cache_age = nsoption_int(disc_cache_age);
-    snprintf( spare, 255, "%02d", tmp_option_disc_cache_age );
+    snprintf( spare, 255, "%02u", tmp_option_disc_cache_age );
     set_text( SETTINGS_EDIT_CACHE_AGE, spare, 3 );
 
     /* "Paths" tab: */
@@ -302,7 +303,7 @@ static void display_settings(void)
 
     // TODO: activate this option?
     tmp_option_min_reflow_period = nsoption_int(min_reflow_period);
-    snprintf( spare, 255, "%04d", tmp_option_min_reflow_period );
+    snprintf( spare, 255, "%04u", tmp_option_min_reflow_period );
     set_text( SETTINGS_EDIT_MIN_REFLOW_PERIOD, spare,
               INPUT_MIN_REFLOW_PERIOD_MAX_LEN );
 
@@ -592,11 +593,11 @@ static void form_event(int index, int external)
         else
             tmp_option_memory_cache_size += 1;
 
-        if( tmp_option_memory_cache_size < 0 )
+        if( tmp_option_memory_cache_size == 0)
             tmp_option_memory_cache_size = 1;
         if( tmp_option_memory_cache_size > 999 )
             tmp_option_memory_cache_size = 999;
-        snprintf( spare, 255, "%02d", tmp_option_memory_cache_size );
+        snprintf( spare, 255, "%02u", tmp_option_memory_cache_size );
         set_text( SETTINGS_STR_MAX_MEM_CACHE, spare, 5 );
         is_button = true;
         OBJ_REDRAW(SETTINGS_STR_MAX_MEM_CACHE);
@@ -609,11 +610,11 @@ static void form_event(int index, int external)
         else
             tmp_option_disc_cache_size += 1;
 
-        if( tmp_option_disc_cache_size < 0 )
+        if( tmp_option_disc_cache_size == 0 )
             tmp_option_disc_cache_size = 1;
         if( tmp_option_disc_cache_size > 9999 )
             tmp_option_disc_cache_size = 9999;
-        snprintf( spare, 255, "%02d", tmp_option_disc_cache_size );
+        snprintf( spare, 255, "%02u", tmp_option_disc_cache_size );
         set_text( SETTINGS_STR_MAX_DISC_CACHE, spare, 5 );
         is_button = true;
         OBJ_REDRAW(SETTINGS_STR_MAX_DISC_CACHE);
@@ -629,7 +630,7 @@ static void form_event(int index, int external)
         if( tmp_option_disc_cache_age > 99 )
             tmp_option_disc_cache_age =  0;
 
-        snprintf( spare, 255, "%02d", tmp_option_disc_cache_age );
+        snprintf( spare, 255, "%02u", tmp_option_disc_cache_age );
         set_text( SETTINGS_EDIT_CACHE_AGE, spare, 2 );
         is_button = true;
         OBJ_REDRAW(SETTINGS_EDIT_CACHE_AGE);
@@ -644,7 +645,7 @@ static void form_event(int index, int external)
         if( tmp_option_max_cached_fetch_handles > 31 )
             tmp_option_max_cached_fetch_handles = 31;
 
-        snprintf( spare, 255, "%02d", tmp_option_max_cached_fetch_handles );
+        snprintf( spare, 255, "%02u", tmp_option_max_cached_fetch_handles );
         set_text( SETTINGS_EDIT_MAX_CACHED_CONNECTIONS, spare, 2 );
         is_button = true;
         OBJ_REDRAW(SETTINGS_EDIT_MAX_CACHED_CONNECTIONS);
@@ -659,7 +660,7 @@ static void form_event(int index, int external)
         if( tmp_option_max_fetchers > 31 )
             tmp_option_max_fetchers = 31;
 
-        snprintf( spare, 255, "%02d", tmp_option_max_fetchers );
+        snprintf( spare, 255, "%02u", tmp_option_max_fetchers );
         set_text( SETTINGS_EDIT_MAX_FETCHERS, spare, 2 );
         is_button = true;
         OBJ_REDRAW(SETTINGS_EDIT_MAX_FETCHERS);
@@ -674,7 +675,7 @@ static void form_event(int index, int external)
         if( tmp_option_max_fetchers_per_host > 31 )
             tmp_option_max_fetchers_per_host = 31;
 
-        snprintf( spare, 255, "%02d", tmp_option_max_fetchers_per_host );
+        snprintf( spare, 255, "%02u", tmp_option_max_fetchers_per_host );
         set_text( SETTINGS_EDIT_MAX_FETCHERS_PER_HOST, spare, 2 );
         is_button = true;
         OBJ_REDRAW(SETTINGS_EDIT_MAX_FETCHERS_PER_HOST);
@@ -690,7 +691,7 @@ static void form_event(int index, int external)
         if( tmp_option_expire_url > 99 )
             tmp_option_expire_url =  0;
 
-        snprintf( spare, 255, "%02d", tmp_option_expire_url );
+        snprintf( spare, 255, "%02u", tmp_option_expire_url );
         set_text( SETTINGS_EDIT_HISTORY_AGE, spare, 2 );
         is_button = true;
         OBJ_REDRAW(SETTINGS_EDIT_HISTORY_AGE);
@@ -725,7 +726,7 @@ static void form_event(int index, int external)
         if( tmp_option_font_min_size < 10 )
             tmp_option_font_min_size = 10;
 
-        snprintf( spare, 255, "%03d", tmp_option_font_min_size );
+        snprintf( spare, 255, "%03u", tmp_option_font_min_size );
         set_text( SETTINGS_EDIT_MIN_FONT_SIZE, spare, 3 );
         is_button = true;
         OBJ_REDRAW(SETTINGS_EDIT_MIN_FONT_SIZE);
@@ -743,7 +744,7 @@ static void form_event(int index, int external)
         if( tmp_option_font_size < 50 )
             tmp_option_font_size = 50;
 
-        snprintf( spare, 255, "%03d", tmp_option_font_size );
+        snprintf( spare, 255, "%03u", tmp_option_font_size );
         set_text( SETTINGS_EDIT_DEF_FONT_SIZE, spare, 3 );
         is_button = true;
         OBJ_REDRAW(SETTINGS_EDIT_DEF_FONT_SIZE);
@@ -759,7 +760,7 @@ static void form_event(int index, int external)
         if( tmp_option_min_reflow_period > 9999 )
             tmp_option_min_reflow_period = 10;
 
-        snprintf( spare, 255, "%04d", tmp_option_min_reflow_period );
+        snprintf( spare, 255, "%04u", tmp_option_min_reflow_period );
         set_text( SETTINGS_EDIT_MIN_REFLOW_PERIOD, spare, 4 );
         is_button = true;
         OBJ_REDRAW(SETTINGS_EDIT_MIN_REFLOW_PERIOD);
@@ -979,12 +980,12 @@ void open_settings(void)
 
 void close_settings(void)
 {
-    LOG("closing");
+    NSLOG(netsurf, INFO, "closing");
     gemtk_wm_remove(settings_guiwin);
     settings_guiwin = NULL;
     wind_close(h_aes_win);
     wind_delete(h_aes_win);
     h_aes_win = 0;
-    LOG("Done");
+    NSLOG(netsurf, INFO, "Done");
 }
 

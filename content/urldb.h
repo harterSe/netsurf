@@ -21,8 +21,8 @@
  * Unified URL information database internal interface.
  */
 
-#ifndef _NETSURF_CONTENT_URLDB_H_
-#define _NETSURF_CONTENT_URLDB_H_
+#ifndef NETSURF_CONTENT_URLDB_H
+#define NETSURF_CONTENT_URLDB_H
 
 #include <libwapcaplet/libwapcaplet.h>
 
@@ -40,8 +40,9 @@ void urldb_destroy(void);
  *
  * \param url Absolute URL to persist
  * \param persist True to persist, false otherwise
+ * \return NSERROR_OK on success or NSERROR_NOT_FOUND if url not in database
  */
-void urldb_set_url_persistence(struct nsurl *url, bool persist);
+nserror urldb_set_url_persistence(struct nsurl *url, bool persist);
 
 
 /**
@@ -58,8 +59,9 @@ bool urldb_add_url(struct nsurl *url);
  *
  * \param url The URL to look for
  * \param title The title string to use (copied)
+ * \return NSERROR_OK on success otherwise appropriate error code
  */
-void urldb_set_url_title(struct nsurl *url, const char *title);
+nserror urldb_set_url_title(struct nsurl *url, const char *title);
 
 
 /**
@@ -67,16 +69,39 @@ void urldb_set_url_title(struct nsurl *url, const char *title);
  *
  * \param url The URL to look for
  * \param type The type to set
+ * \return NSERROR_OK on success or NSERROR_NOT_FOUND if url not in database
  */
-void urldb_set_url_content_type(struct nsurl *url, content_type type);
+nserror urldb_set_url_content_type(struct nsurl *url, content_type type);
+
+
+/**
+ * Set authentication data for an URL
+ *
+ * \param url The URL to consider
+ * \param realm The authentication realm
+ * \param auth The authentication details (in form username:password)
+ */
+void urldb_set_auth_details(struct nsurl *url, const char *realm, const char *auth);
+
+
+/**
+ * Look up authentication details in database
+ *
+ * \param url Absolute URL to search for
+ * \param realm When non-NULL, it is realm which can be used to determine
+ *        the protection space when that's not been done before for given URL.
+ * \return Pointer to authentication details, or NULL if not found
+ */
+const char *urldb_get_auth_details(struct nsurl *url, const char *realm);
 
 
 /**
  * Update an URL's visit data
  *
  * \param url The URL to update
+ * \return NSERROR_OK on success or NSERROR_NOT_FOUND if url not in database
  */
-void urldb_update_url_visit_data(struct nsurl *url);
+nserror urldb_update_url_visit_data(struct nsurl *url);
 
 
 /**
@@ -107,24 +132,14 @@ bool urldb_get_cert_permissions(struct nsurl *url);
 
 
 /**
- * Set thumbnail for url, replacing any existing thumbnail
- *
- * \param url Absolute URL to consider
- * \param bitmap Opaque pointer to thumbnail data, or NULL to invalidate
- * \return true on sucessful setting else false
- */
-bool urldb_set_thumbnail(struct nsurl *url, struct bitmap *bitmap);
-
-
-/**
  * Parse Set-Cookie header and insert cookie(s) into database
  *
  * \param header Header to parse, with Set-Cookie: stripped
  * \param url URL being fetched
- * \param referer Referring resource, or 0 for verifiable transaction
+ * \param referrer Referring resource, or 0 for verifiable transaction
  * \return true on success, false otherwise
  */
-bool urldb_set_cookie(const char *header, struct nsurl *url, struct nsurl *referer);
+bool urldb_set_cookie(const char *header, struct nsurl *url, struct nsurl *referrer);
 
 
 /**
@@ -138,28 +153,21 @@ char *urldb_get_cookie(struct nsurl *url, bool include_http_only);
 
 
 /**
- * Add a host to the database, creating any intermediate entries
+ * Set HSTS policy for an URL
  *
- * \param host Hostname to add
- * \return Pointer to leaf node, or NULL on memory exhaustion
+ * \param url URL being fetched
+ * \param header Strict-Transport-Security header value
+ * \return true on success, false otherwise
  */
-struct host_part *urldb_add_host(const char *host);
+bool urldb_set_hsts_policy(struct nsurl *url, const char *header);
 
 
 /**
- * Add a path to the database, creating any intermediate entries
+ * Determine if HSTS policy is enabled for an URL
  *
- * \param scheme URL scheme associated with path
- * \param port Port number on host associated with path
- * \param host Host tree node to attach to
- * \param path_query Absolute path plus query to add (freed)
- * \param fragment URL fragment, or NULL
- * \param url URL (fragment ignored)
- * \return Pointer to leaf node, or NULL on memory exhaustion
+ * \param url URL being fetched
+ * \return true if HSTS policy is enabled, false otherwise
  */
-struct path_data *urldb_add_path(lwc_string *scheme, unsigned int port,
-		const struct host_part *host, char *path_query,
-		lwc_string *fragment, struct nsurl *url);
-
+bool urldb_get_hsts_enabled(struct nsurl *url);
 
 #endif

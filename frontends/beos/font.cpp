@@ -130,7 +130,7 @@ void nsbeos_style_to_font(BFont &font, const struct plot_font_style *fstyle)
 	}
 
 //fprintf(stderr, "nsbeos_style_to_font: value %f unit %d\n", style->font_size.value.length.value, style->font_size.value.length.unit);
-	size = fstyle->size / FONT_SIZE_SCALE;
+	size = fstyle->size / PLOT_STYLE_SCALE;
 
 //fprintf(stderr, "nsbeos_style_to_font: %f %d\n", size, style->font_size.value.length.unit);
 
@@ -204,8 +204,8 @@ static nserror beos_font_position(const plot_font_style_t *fstyle,
 		const char *string, size_t length,
 		int x, size_t *char_offset, int *actual_x)
 {
-	//LOG("(, '%s', %d, %d, , )", string, length, x);
-	//fprintf(stderr, "%s(, '%s', %d, %d, , )\n", __FUNCTION__, string, length, x);
+	NSLOG(netsurf, DEEPDEBUG, "(, '%s', %d, %d, , )", string, length, x);
+
 	int index;
 	BFont font;
 
@@ -261,8 +261,7 @@ static nserror beos_font_split(const plot_font_style_t *fstyle,
 		const char *string, size_t length,
 		int x, size_t *char_offset, int *actual_x)
 {
-	//fprintf(stderr, "%s(, '%s', %d, %d, , )\n", __FUNCTION__, string, length, x);
-	//LOG("(, '%s', %d, %d, , )", string, length, x);
+	NSLOG(netsurf, DEEPDEBUG, "(, '%s', %d, %d, , )", string, length, x);
 	int index = 0;
 	BFont font;
 

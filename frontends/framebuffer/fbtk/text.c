@@ -71,7 +71,7 @@ fb_text_font_style(fbtk_widget_t *widget, int *font_height, int *padding,
 #endif
 
 	font_style->family = PLOT_FONT_FAMILY_SANS_SERIF;
-	font_style->size = px_to_pt(*font_height * FONT_SIZE_SCALE);
+	font_style->size = px_to_pt(*font_height * PLOT_STYLE_SCALE);
 	font_style->weight = 400;
 	font_style->flags = FONTF_NONE;
 	font_style->background = widget->bg;
@@ -98,6 +98,11 @@ fb_redraw_text(fbtk_widget_t *widget, fbtk_callback_info *cbi )
 	int padding;
 	int scroll = 0;
 	bool caret = false;
+	struct redraw_context ctx = {
+		.interactive = true,
+		.background_images = true,
+		.plot = &fb_plotters
+	};
 
 	fb_text_font_style(widget, &fh, &padding, &font_style);
 
@@ -142,8 +147,11 @@ fb_redraw_text(fbtk_widget_t *widget, fbtk_callback_info *cbi )
 		}
 
 		/* Call the fb text plotting, baseline is 3/4 down the font */
-		fb_plotters.text(x, y, widget->u.text.text,
-				widget->u.text.len, &font_style);
+		ctx.plot->text(&ctx,
+			       &font_style,
+			       x, y,
+			       widget->u.text.text,
+			       widget->u.text.len);
 	}
 
 	if (caret) {
@@ -209,6 +217,11 @@ fb_redraw_text_button(fbtk_widget_t *widget, fbtk_callback_info *cbi )
 	int fh;
 	int border;
 	fbtk_widget_t *root = fbtk_get_root_widget(widget);
+	struct redraw_context ctx = {
+		.interactive = true,
+		.background_images = true,
+		.plot = &fb_plotters
+	};
 
 	fb_text_font_style(widget, &fh, &border, &font_style);
 
@@ -256,11 +269,12 @@ fb_redraw_text_button(fbtk_widget_t *widget, fbtk_callback_info *cbi )
 
 	if (widget->u.text.text != NULL) {
 		/* Call the fb text plotting, baseline is 3/4 down the font */
-		fb_plotters.text(bbox.x0 + border,
-				bbox.y0 + ((fh * 3) / 4) + border,
-				widget->u.text.text,
-				widget->u.text.len,
-				&font_style);
+		ctx.plot->text(&ctx,
+			       &font_style,
+			       bbox.x0 + border,
+			       bbox.y0 + ((fh * 3) / 4) + border,
+			       widget->u.text.text,
+			       widget->u.text.len);
 	}
 
 	nsfb_update(root->u.root.fb, &bbox);
@@ -369,6 +383,22 @@ text_input(fbtk_widget_t *widget, fbtk_callback_info *cbi)
 				widget->u.text.idx--;
 			else
 				widget->u.text.idx = 0;
+
+			caret_moved = true;
+		}
+		break;
+
+	case NSFB_KEY_HOME:
+		if (widget->u.text.idx > 0) {
+			widget->u.text.idx = 0;
+
+			caret_moved = true;
+		}
+		break;
+
+	case NSFB_KEY_END:
+		if (widget->u.text.idx < widget->u.text.len) {
+			widget->u.text.idx = widget->u.text.len;
 
 			caret_moved = true;
 		}

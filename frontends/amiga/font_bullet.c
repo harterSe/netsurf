@@ -41,6 +41,7 @@
 #include "utils/utf8.h"
 #include "utils/utils.h"
 
+#include "amiga/memory.h"
 #include "amiga/misc.h"
 #include "amiga/font.h"
 #include "amiga/font_bullet.h"
@@ -62,7 +63,7 @@
 #define NSA_VALUE_SHEARSIN (1 << 14)
 #define NSA_VALUE_SHEARCOS (1 << 16)
 
-#define NSA_FONT_EMWIDTH(s) (s / FONT_SIZE_SCALE) * (ami_font_dpi_get_xdpi() / 72.0)
+#define NSA_FONT_EMWIDTH(s) (s / PLOT_STYLE_SCALE) * (ami_font_dpi_get_xdpi() / 72.0)
 
 const uint16 sc_table[] = {
 		0x0061, 0x1D00, /* a */
@@ -360,29 +361,36 @@ static struct ami_font_cache_node *ami_font_open(const char *font, bool critical
 	
 	if(!nodedata->font)
 	{
-		LOG("Requested font not found: %s", font);
+		NSLOG(netsurf, INFO, "Requested font not found: %s", font);
 		if(critical == true) amiga_warn_user("CompError", font);
-		FreeVec(nodedata);
+		free(nodedata);
 		return NULL;
 	}
 
 	nodedata->bold = (char *)GetTagData(OT_BName, 0, nodedata->font->olf_OTagList);
 	if(nodedata->bold)
-		LOG("Bold font defined for %s is %s", font, nodedata->bold);
+		NSLOG(netsurf, INFO, "Bold font defined for %s is %s", font,
+		      nodedata->bold);
 	else
-		LOG("Warning: No designed bold font defined for %s", font);
+		NSLOG(netsurf, INFO,
+		      "Warning: No designed bold font defined for %s", font);
 
 	nodedata->italic = (char *)GetTagData(OT_IName, 0, nodedata->font->olf_OTagList);
 	if(nodedata->italic)
-		LOG("Italic font defined for %s is %s", font, nodedata->italic);
+		NSLOG(netsurf, INFO, "Italic font defined for %s is %s",
+		      font, nodedata->italic);
 	else
-		LOG("Warning: No designed italic font defined for %s", font);
+		NSLOG(netsurf, INFO,
+		      "Warning: No designed italic font defined for %s", font);
 
 	nodedata->bolditalic = (char *)GetTagData(OT_BIName, 0, nodedata->font->olf_OTagList);
 	if(nodedata->bolditalic)
-		LOG("Bold-italic font defined for %s is %s", font, nodedata->bolditalic);
+		NSLOG(netsurf, INFO, "Bold-italic font defined for %s is %s",
+		      font, nodedata->bolditalic);
 	else
-		LOG("Warning: No designed bold-italic font defined for %s", font);
+		NSLOG(netsurf, INFO,
+		      "Warning: No designed bold-italic font defined for %s",
+		      font);
 
 	ami_font_cache_insert(nodedata, font);
 	return nodedata;
@@ -504,7 +512,7 @@ static struct OutlineFont *ami_open_outline_font(const plot_font_style_t *fstyle
 	}
 
 	/* Scale to 16.16 fixed point */
-	ysize = fstyle->size * ((1 << 16) / FONT_SIZE_SCALE);
+	ysize = fstyle->size * ((1 << 16) / PLOT_STYLE_SCALE);
 
 	if(designed_node == NULL) {
 		ofont = node->font;
@@ -600,7 +608,7 @@ static inline int32 ami_font_plot_glyph(struct OutlineFont *ofont, struct RastPo
 					TAG_DONE);
 #else
 				/* On OS3 the glyph needs to be in chip RAM */
-				void *chip_glyph = AllocVec(glyph->glm_BMModulo * glyph->glm_BMRows, MEMF_CHIP);
+				void *chip_glyph = ami_memory_chip_alloc(glyph->glm_BMModulo * glyph->glm_BMRows);
 				if(chip_glyph != NULL) {
 					CopyMem(glyphbm, chip_glyph, glyph->glm_BMModulo * glyph->glm_BMRows);
 
@@ -611,7 +619,7 @@ static inline int32 ami_font_plot_glyph(struct OutlineFont *ofont, struct RastPo
 						y - glyph->glm_Y0 + glyph->glm_BlackTop,
 						glyph->glm_BlackWidth, glyph->glm_BlackHeight);
 
-					FreeVec(chip_glyph);
+					ami_memory_chip_free(chip_glyph);
 				}
 #endif
 			}

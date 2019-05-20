@@ -33,7 +33,7 @@
 #include "utils/messages.h"
 #include "netsurf/plotters.h"
 #include "netsurf/content.h"
-#include "render/box.h"
+#include "html/box.h"
 #include "content/llcache.h"
 #include "content/content_protected.h"
 
@@ -76,7 +76,7 @@ static const content_handler amiga_dt_sound_content_handler = {
 
 static void amiga_dt_sound_play(Object *dto)
 {
-	LOG("Playing...");
+	NSLOG(netsurf, INFO, "Playing...");
 	IDoMethod(dto, DTM_TRIGGER, NULL, STM_PLAY, NULL);
 }
 
@@ -126,7 +126,7 @@ nserror amiga_dt_sound_create(const content_handler *handler,
 	amiga_dt_sound_content *plugin;
 	nserror error;
 
-	LOG("amiga_dt_sound_create");
+	NSLOG(netsurf, INFO, "amiga_dt_sound_create");
 
 	plugin = calloc(1, sizeof(amiga_dt_sound_content));
 	if (plugin == NULL)
@@ -146,7 +146,7 @@ nserror amiga_dt_sound_create(const content_handler *handler,
 
 bool amiga_dt_sound_convert(struct content *c)
 {
-	LOG("amiga_dt_sound_convert");
+	NSLOG(netsurf, INFO, "amiga_dt_sound_convert");
 
 	amiga_dt_sound_content *plugin = (amiga_dt_sound_content *) c;
 	int width = 50, height = 50;
@@ -180,7 +180,7 @@ void amiga_dt_sound_destroy(struct content *c)
 {
 	amiga_dt_sound_content *plugin = (amiga_dt_sound_content *) c;
 
-	LOG("amiga_dt_sound_destroy");
+	NSLOG(netsurf, INFO, "amiga_dt_sound_destroy");
 
 	DisposeDTObject(plugin->dto);
 
@@ -195,20 +195,27 @@ bool amiga_dt_sound_redraw(struct content *c,
 		.fill_type = PLOT_OP_TYPE_SOLID,
 		.fill_colour = 0xffffff,
 		.stroke_colour = 0x000000,
-		.stroke_width = 1,
+		.stroke_width = plot_style_int_to_fixed(1),
 	};
+	struct rect rect;
 
-	LOG("amiga_dt_sound_redraw");
+	NSLOG(netsurf, INFO, "amiga_dt_sound_redraw");
+
+	rect.x0 = data->x;
+	rect.y0 = data->y;
+	rect.x1 = data->x + data->width;
+	rect.y1 = data->y + data->height;
 
 	/* this should be some sort of play/stop control */
 
-	ctx->plot->rectangle(data->x, data->y, data->x + data->width,
-			data->y + data->height, &pstyle);
+	ctx->plot->rectangle(ctx, &pstyle, &rect);
 
-	return ctx->plot->text(data->x, data->y+20,
-			lwc_string_data(content__get_mime_type(c)),
-			lwc_string_length(content__get_mime_type(c)),
-			plot_style_font);
+	return (ctx->plot->text(ctx,
+				plot_style_font,
+				data->x,
+				data->y+20,
+				lwc_string_data(content__get_mime_type(c)),
+				lwc_string_length(content__get_mime_type(c))) == NSERROR_OK);
 
 }
 
@@ -219,7 +226,7 @@ void amiga_dt_sound_open(struct content *c, struct browser_window *bw,
 	amiga_dt_sound_content *plugin = (amiga_dt_sound_content *) c;
 	struct object_param *param;
 
-	LOG("amiga_dt_sound_open");
+	NSLOG(netsurf, INFO, "amiga_dt_sound_open");
 
 	plugin->immediate = false;
 
@@ -227,7 +234,8 @@ void amiga_dt_sound_open(struct content *c, struct browser_window *bw,
 	{
 		do
 		{
-			LOG("%s = %s", param->name, param->value);
+			NSLOG(netsurf, INFO, "%s = %s", param->name,
+			      param->value);
 			if((strcmp(param->name, "autoplay") == 0) &&
 				(strcmp(param->value, "true") == 0)) plugin->immediate = true;
 			if((strcmp(param->name, "autoStart") == 0) &&
@@ -248,7 +256,7 @@ nserror amiga_dt_sound_clone(const struct content *old, struct content **newc)
 	amiga_dt_sound_content *plugin;
 	nserror error;
 
-	LOG("amiga_dt_sound_clone");
+	NSLOG(netsurf, INFO, "amiga_dt_sound_clone");
 
 	plugin = calloc(1, sizeof(amiga_dt_sound_content));
 	if (plugin == NULL)

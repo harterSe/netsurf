@@ -25,7 +25,7 @@
 #include "utils/utf8.h"
 #include "utils/log.h"
 #include "netsurf/mouse.h"
-#include "desktop/plot_style.h"
+#include "netsurf/plot_style.h"
 
 #include "atari/gui.h"
 #include "atari/bitmap.h"
@@ -96,7 +96,7 @@ int ctor_font_plotter_internal( FONT_PLOTTER self )
 	self->str_split = str_split;
 	self->pixel_pos = pixel_pos;
 	self->text = text;
-	LOG("%s: %s\n", (char *)__FILE__, __FUNCTION__);
+	NSLOG(netsurf, INFO, "%s: %s\n", (char *)__FILE__, __FUNCTION__);
 	if( !init ) {
 		vdih = self->vdi_handle;
 		fontbmp = atari_bitmap_create(48, 48, 0);
@@ -161,7 +161,7 @@ static int pixel_pos( FONT_PLOTTER self, const plot_font_style_t * fstyle,const 
 static void draw_glyph1(FONT_PLOTTER self, GRECT *inloc, uint8_t *chrp, int pitch, uint32_t colour )
 {
 	size_t bmpstride;
-	GRECT clip;
+	//GRECT clip;
 	uint32_t * fontdata;
 	int xloop,yloop;
 	int stride = pitch / 8;

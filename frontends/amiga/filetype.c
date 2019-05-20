@@ -31,7 +31,6 @@
 #include "utils/utils.h"
 
 #include "amiga/filetype.h"
-#include "amiga/misc.h"
 #include "amiga/object.h"
 
 /**
@@ -186,7 +185,7 @@ nserror ami_mime_init(const char *mimefile)
 	struct nsObject *node;
 	struct ami_mime_entry *mimeentry;
 
-	LOG("mimetypes file: %s", mimefile);
+	NSLOG(netsurf, INFO, "mimetypes file: %s", mimefile);
 
 	if(ami_mime_list == NULL)
 		ami_mime_list = NewObjList();
@@ -217,7 +216,7 @@ nserror ami_mime_init(const char *mimefile)
 			{
 				if ((node = AddObject(ami_mime_list, AMINS_MIME))) {
 					ObjectCallback(node, ami_mime_entry_free);
-					mimeentry = ami_misc_allocvec_clear(sizeof(struct ami_mime_entry), 0);
+					mimeentry = calloc(1, sizeof(struct ami_mime_entry));
 					node->objstruct = mimeentry;
 
 					if(rarray[AMI_MIME_MIMETYPE])
@@ -361,7 +360,7 @@ static APTR ami_mime_guess_add_datatype(struct DataType *dt, lwc_string **lwc_mi
 	node = AddObject(ami_mime_list, AMINS_MIME);
 	if(node == NULL) return NULL;
 
-	mimeentry = ami_misc_allocvec_clear(sizeof(struct ami_mime_entry), 0);
+	mimeentry = calloc(1, sizeof(struct ami_mime_entry));
 	if(mimeentry == NULL) return NULL;
 
 	node->objstruct = mimeentry;
@@ -643,6 +642,10 @@ void ami_mime_dump(void)
 	struct ami_mime_entry *mimeentry;
 
 	while((mimeentry = ami_mime_entry_locate(NULL, AMI_MIME_MIMETYPE, &node))) {
-		LOG("%s DT=\"%s\" TYPE=\"%s\" CMD=\"%s\"", mimeentry->mimetype ? lwc_string_data(mimeentry->mimetype) : "", mimeentry->datatype ? lwc_string_data(mimeentry->datatype) : "", mimeentry->filetype ? lwc_string_data(mimeentry->filetype) : "", mimeentry->plugincmd ? lwc_string_data(mimeentry->plugincmd) : "");
+		NSLOG(netsurf, INFO, "%s DT=\"%s\" TYPE=\"%s\" CMD=\"%s\"",
+		      mimeentry->mimetype ? lwc_string_data(mimeentry->mimetype) : "",
+		      mimeentry->datatype ? lwc_string_data(mimeentry->datatype) : "",
+		      mimeentry->filetype ? lwc_string_data(mimeentry->filetype) : "",
+		      mimeentry->plugincmd ? lwc_string_data(mimeentry->plugincmd) : "");
 	};
 }

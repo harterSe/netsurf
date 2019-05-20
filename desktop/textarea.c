@@ -45,9 +45,9 @@
 #define TA_ALLOC_STEP 512
 
 static plot_style_t pstyle_stroke_caret = {
-    .stroke_type = PLOT_OP_TYPE_SOLID,
-    .stroke_colour = CARET_COLOR,
-    .stroke_width = 1,
+	.stroke_type = PLOT_OP_TYPE_SOLID,
+	.stroke_colour = CARET_COLOR,
+	.stroke_width = plot_style_int_to_fixed(1),
 };
 
 struct line_info {
@@ -828,7 +828,7 @@ static bool textarea_reflow_singleline(struct textarea *ta, size_t b_off,
 		ta->lines =
 			malloc(LINE_CHUNK_SIZE * sizeof(struct line_info));
 		if (ta->lines == NULL) {
-			LOG("malloc failed");
+			NSLOG(netsurf, INFO, "malloc failed");
 			return false;
 		}
 		ta->lines_alloc_size = LINE_CHUNK_SIZE;
@@ -852,7 +852,7 @@ static bool textarea_reflow_singleline(struct textarea *ta, size_t b_off,
 			char *temp = realloc(ta->password.data,
 					b_len + TA_ALLOC_STEP);
 			if (temp == NULL) {
-				LOG("realloc failed");
+				NSLOG(netsurf, INFO, "realloc failed");
 				return false;
 			}
 
@@ -936,7 +936,8 @@ static bool textarea_reflow_multiline(struct textarea *ta,
 	if (ta->lines == NULL) {
 		ta->lines = calloc(sizeof(struct line_info), LINE_CHUNK_SIZE);
 		if (ta->lines == NULL) {
-			LOG("Failed to allocate memory for textarea lines");
+			NSLOG(netsurf, INFO,
+			      "Failed to allocate memory for textarea lines");
 			return false;
 		}
 		ta->lines_alloc_size = LINE_CHUNK_SIZE;
@@ -1053,7 +1054,7 @@ static bool textarea_reflow_multiline(struct textarea *ta,
 						(line + 2 + LINE_CHUNK_SIZE) *
 						sizeof(struct line_info));
 				if (temp == NULL) {
-					LOG("realloc failed");
+					NSLOG(netsurf, INFO, "realloc failed");
 					return false;
 				}
 
@@ -1334,7 +1335,7 @@ static bool textarea_insert_text(struct textarea *ta, const char *text,
 		char *temp = realloc(ta->text.data, b_len + ta->text.len +
 				TA_ALLOC_STEP);
 		if (temp == NULL) {
-			LOG("realloc failed");
+			NSLOG(netsurf, INFO, "realloc failed");
 			return false;
 		}
 
@@ -1484,7 +1485,7 @@ static bool textarea_replace_text_internal(struct textarea *ta, size_t b_start,
 				rep_len + ta->text.len - (b_end - b_start) +
 					TA_ALLOC_STEP);
 		if (temp == NULL) {
-			LOG("realloc failed");
+			NSLOG(netsurf, INFO, "realloc failed");
 			return false;
 		}
 
@@ -1561,7 +1562,7 @@ static bool textarea_copy_to_undo_buffer(struct textarea *ta,
 		char *temp = realloc(undo->text.data,
 				b_offset + len + TA_ALLOC_STEP);
 		if (temp == NULL) {
-			LOG("realloc failed");
+			NSLOG(netsurf, INFO, "realloc failed");
 			return false;
 		}
 
@@ -1575,7 +1576,7 @@ static bool textarea_copy_to_undo_buffer(struct textarea *ta,
 				(undo->next_detail + 128) *
 				sizeof(struct textarea_undo_detail));
 		if (temp == NULL) {
-			LOG("realloc failed");
+			NSLOG(netsurf, INFO, "realloc failed");
 			return false;
 		}
 
@@ -1802,6 +1803,10 @@ static void textarea_setup_text_offsets(struct textarea *ta)
 {
 	int text_y_offset, text_y_offset_baseline;
 
+	ta->line_height = FIXTOINT(FMUL(FLTTOFIX(1.3), FDIV(FMUL(
+			nscss_screen_dpi, FDIV(INTTOFIX(ta->fstyle.size),
+			INTTOFIX(PLOT_STYLE_SCALE))), F_72)));
+
 	text_y_offset = text_y_offset_baseline = ta->border_width;
 	if (ta->flags & TEXTAREA_MULTILINE) {
 		/* Multiline textarea */
@@ -1821,6 +1826,27 @@ static void textarea_setup_text_offsets(struct textarea *ta)
 }
 
 
+/**
+ * Set font styles up for a textarea.
+ *
+ * \param[in] ta             Textarea to update.
+ * \param[in] fstyle         Font style to set in textarea.
+ * \param[in] selected_text  Textarea selected text colour.
+ * \param[in] selected_bg    Textarea selection background colour.
+ */
+static void textarea_set_text_style(
+		struct textarea *ta,
+		const plot_font_style_t *fstyle,
+		colour selected_text,
+		colour selected_bg)
+{
+	ta->fstyle = *fstyle;
+
+	ta->sel_fstyle = *fstyle;
+	ta->sel_fstyle.foreground = selected_text;
+	ta->sel_fstyle.background = selected_bg;
+}
+
 
 /* exported interface, documented in textarea.h */
 struct textarea *textarea_create(const textarea_flags flags,
@@ -1835,13 +1861,13 @@ struct textarea *textarea_create(const textarea_flags flags,
 			flags & TEXTAREA_PASSWORD));
 
 	if (callback == NULL) {
-		LOG("no callback provided");
+		NSLOG(netsurf, INFO, "no callback provided");
 		return NULL;
 	}
 
 	ret = malloc(sizeof(struct textarea));
 	if (ret == NULL) {
-		LOG("malloc failed");
+		NSLOG(netsurf, INFO, "malloc failed");
 		return NULL;
 	}
 
@@ -1860,11 +1886,10 @@ struct textarea *textarea_create(const textarea_flags flags,
 	ret->border_width = setup->border_width;
 	ret->border_col = setup->border_col;
 
-	ret->fstyle = setup->text;
-
-	ret->sel_fstyle = setup->text;
-	ret->sel_fstyle.foreground = setup->selected_text;
-	ret->sel_fstyle.background = setup->selected_bg;
+	textarea_set_text_style(ret,
+			&setup->text,
+			setup->selected_text,
+			setup->selected_bg);
 
 	ret->scroll_x = 0;
 	ret->scroll_y = 0;
@@ -1888,7 +1913,7 @@ struct textarea *textarea_create(const textarea_flags flags,
 
 	ret->text.data = malloc(TA_ALLOC_STEP);
 	if (ret->text.data == NULL) {
-		LOG("malloc failed");
+		NSLOG(netsurf, INFO, "malloc failed");
 		free(ret);
 		return NULL;
 	}
@@ -1900,7 +1925,7 @@ struct textarea *textarea_create(const textarea_flags flags,
 	if (flags & TEXTAREA_PASSWORD) {
 		ret->password.data = malloc(TA_ALLOC_STEP);
 		if (ret->password.data == NULL) {
-			LOG("malloc failed");
+			NSLOG(netsurf, INFO, "malloc failed");
 			free(ret->text.data);
 			free(ret);
 			return NULL;
@@ -1923,7 +1948,7 @@ struct textarea *textarea_create(const textarea_flags flags,
 
 	ret->line_height = FIXTOINT(FMUL(FLTTOFIX(1.3), FDIV(FMUL(
 			nscss_screen_dpi, FDIV(INTTOFIX(setup->text.size),
-			INTTOFIX(FONT_SIZE_SCALE))), F_72)));
+			INTTOFIX(PLOT_STYLE_SCALE))), F_72)));
 
 	ret->caret_pos.line = ret->caret_pos.byte_off = -1;
 	ret->caret_x = 0;
@@ -1975,7 +2000,7 @@ bool textarea_set_text(struct textarea *ta, const char *text)
 	if (len >= ta->text.alloc) {
 		char *temp = realloc(ta->text.data, len + TA_ALLOC_STEP);
 		if (temp == NULL) {
-			LOG("realloc failed");
+			NSLOG(netsurf, INFO, "realloc failed");
 			return false;
 		}
 		ta->text.data = temp;
@@ -2062,13 +2087,24 @@ int textarea_get_text(struct textarea *ta, char *buf, unsigned int len)
 	}
 
 	if (len < ta->text.len) {
-		LOG("buffer too small");
+		NSLOG(netsurf, INFO, "buffer too small");
 		return -1;
 	}
 
 	memcpy(buf, ta->text.data, ta->text.len);
 
 	return ta->text.len;
+}
+
+
+/* exported interface, documented in textarea.h */
+const char * textarea_data(struct textarea *ta, unsigned int *len)
+{
+	if (len != NULL) {
+		*len = ta->text.len;
+	}
+
+	return ta->text.data;
 }
 
 
@@ -2095,13 +2131,13 @@ bool textarea_set_caret(struct textarea *ta, int caret)
 void textarea_redraw(struct textarea *ta, int x, int y, colour bg, float scale,
 		const struct rect *clip, const struct redraw_context *ctx)
 {
-	const struct plotter_table *plot = ctx->plot;
 	int line0, line1, line, left, right, line_y;
 	int text_y_offset, text_y_offset_baseline;
 	unsigned int b_pos, b_len, b_len_part, b_end;
 	unsigned int sel_start, sel_end;
 	char *line_text;
 	struct rect r, s;
+	struct rect rect;
 	bool selected = false;
 	plot_font_style_t fstyle;
 	int fsize = ta->fstyle.size;
@@ -2162,20 +2198,24 @@ void textarea_redraw(struct textarea *ta, int x, int y, colour bg, float scale,
 			r.y1 = y + ta->vis_height * scale;
 	}
 
-	plot->clip(&r);
+	ctx->plot->clip(ctx, &r);
 	if (ta->border_col != NS_TRANSPARENT &&
 			ta->border_width > 0) {
 		/* Plot border */
-		plot->rectangle(x, y, x + ta->vis_width, y + ta->vis_height,
-				&plot_style_fill_bg);
+		rect.x0 = x;
+		rect.y0 = y;
+		rect.x1 = x + ta->vis_width;
+		rect.y1 = y + ta->vis_height;
+		ctx->plot->rectangle(ctx, &plot_style_fill_bg, &rect);
 	}
 	if (ta->fstyle.background != NS_TRANSPARENT) {
 		/* Plot background */
 		plot_style_fill_bg.fill_colour = ta->fstyle.background;
-		plot->rectangle(x + ta->border_width, y + ta->border_width,
-				x + ta->vis_width - ta->border_width,
-				y + ta->vis_height - ta->border_width,
-				&plot_style_fill_bg);
+		rect.x0 = x + ta->border_width;
+		rect.y0 = y + ta->border_width;
+		rect.x1 = x + ta->vis_width - ta->border_width;
+		rect.y1 = y + ta->vis_height - ta->border_width;
+		ctx->plot->rectangle(ctx, &plot_style_fill_bg, &rect);
 	}
 
 	if (scale == 1.0) {
@@ -2223,16 +2263,16 @@ void textarea_redraw(struct textarea *ta, int x, int y, colour bg, float scale,
 
 	plot_style_fill_bg.fill_colour = ta->sel_fstyle.background;
 
-	for (line = line0; (line <= line1) &&
-			(y + line * ta->line_height <= r.y1 + ta->scroll_y);
-			line++) {
+	for (line = line0;
+	     (line <= line1) &&	(y + line * ta->line_height <= r.y1 + ta->scroll_y);
+	     line++) {
 		if (ta->lines[line].b_length == 0) {
 			b_pos++;
 			continue;
 		}
 
 		/* reset clip rectangle */
-		plot->clip(&r);
+		ctx->plot->clip(ctx, &r);
 
 		b_len = ta->lines[line].b_length;
 
@@ -2256,12 +2296,12 @@ void textarea_redraw(struct textarea *ta, int x, int y, colour bg, float scale,
 			fstyle = ta->fstyle;
 			fstyle.size = fsize;
 
-			plot->text(x + ta->border_width + ta->pad_left -
-					ta->scroll_x,
+			ctx->plot->text(ctx,
+					&fstyle,
+					x + ta->border_width + ta->pad_left - ta->scroll_x,
 					y + line_y + text_y_offset_baseline,
-					ta->show->data +
-							ta->lines[line].b_start,
-					ta->lines[line].b_length, &fstyle);
+					ta->show->data + ta->lines[line].b_start,
+					ta->lines[line].b_length);
 
 			b_pos += b_len;
 
@@ -2338,24 +2378,24 @@ void textarea_redraw(struct textarea *ta, int x, int y, colour bg, float scale,
 				continue;
 			}
 
-			plot->clip(&s);
+			ctx->plot->clip(ctx, &s);
 
 			if (selected) {
 				/* draw selection fill */
-				plot->rectangle(s.x0, y + line_y +
-					text_y_offset,
-					s.x1, y + line_y + line_height +
-							text_y_offset,
-					&plot_style_fill_bg);
+				rect.x0 = s.x0;
+				rect.y0 = y + line_y + text_y_offset;
+				rect.x1 = s.x1;
+				rect.y1 = y + line_y + line_height + text_y_offset;
+				ctx->plot->rectangle(ctx, &plot_style_fill_bg, &rect);
 			}
 
 			/* draw text */
-			plot->text(x + ta->border_width + ta->pad_left -
-					ta->scroll_x,
+			ctx->plot->text(ctx,
+					&fstyle,
+					x + ta->border_width + ta->pad_left - ta->scroll_x,
 					y + line_y + text_y_offset_baseline,
-					ta->show->data +
-							ta->lines[line].b_start,
-					ta->lines[line].b_length, &fstyle);
+					ta->show->data + ta->lines[line].b_start,
+					ta->lines[line].b_length);
 
 			b_pos += b_len_part;
 			b_len -= b_len_part;
@@ -2376,30 +2416,33 @@ void textarea_redraw(struct textarea *ta, int x, int y, colour bg, float scale,
 		/* No native caret, there is no selection, and caret visible */
 		int caret_y = y - ta->scroll_y + ta->caret_y;
 
-		plot->clip(&r);
+		ctx->plot->clip(ctx, &r);
 
 		/* Render our own caret */
-		plot->line(x - ta->scroll_x + ta->caret_x, caret_y,
-				x - ta->scroll_x + ta->caret_x,
-				caret_y + ta->line_height,
-				&pstyle_stroke_caret);
+		rect.x0 = x - ta->scroll_x + ta->caret_x;
+		rect.y0 = caret_y;
+		rect.x1 = x - ta->scroll_x + ta->caret_x;
+		rect.y1 = caret_y + ta->line_height;
+		ctx->plot->line(ctx, &pstyle_stroke_caret, &rect);
 	}
 
-	plot->clip(clip);
+	ctx->plot->clip(ctx, clip);
 
-	if (ta->bar_x != NULL)
+	if (ta->bar_x != NULL) {
 		scrollbar_redraw(ta->bar_x,
 				x / scale + ta->border_width,
 				y / scale + ta->vis_height - ta->border_width -
 						SCROLLBAR_WIDTH,
 				clip, scale, ctx);
+	}
 
-	if (ta->bar_y != NULL)
+	if (ta->bar_y != NULL) {
 		scrollbar_redraw(ta->bar_y,
 				x / scale + ta->vis_width - ta->border_width -
 						SCROLLBAR_WIDTH,
 				y / scale + ta->border_width,
 				clip, scale, ctx);
+	}
 }
 
 
@@ -2842,7 +2885,7 @@ bool textarea_keypress(struct textarea *ta, uint32_t key)
 			return false;
 	}
 
-	redraw &= ~textarea_set_caret_internal(ta, caret);
+	redraw &= !textarea_set_caret_internal(ta, caret);
 
 	/* TODO: redraw only the bit that changed */
 	msg.ta = ta;
@@ -3201,8 +3244,12 @@ void textarea_set_dimensions(struct textarea *ta, int width, int height)
 
 
 /* exported interface, documented in textarea.h */
-void textarea_set_layout(struct textarea *ta, int width, int height,
-		int top, int right, int bottom, int left)
+void textarea_set_layout(
+		struct textarea *ta,
+		const plot_font_style_t *fstyle,
+		int width, int height,
+		int top, int right,
+		int bottom, int left)
 {
 	struct rect r = {0, 0, 0, 0};
 
@@ -3212,6 +3259,10 @@ void textarea_set_layout(struct textarea *ta, int width, int height,
 	ta->pad_right = right + ((ta->bar_y == NULL) ? 0 : SCROLLBAR_WIDTH);
 	ta->pad_bottom = bottom + ((ta->bar_x == NULL) ? 0 : SCROLLBAR_WIDTH);
 	ta->pad_left = left;
+
+	textarea_set_text_style(ta, fstyle,
+			ta->sel_fstyle.foreground,
+			ta->sel_fstyle.background);
 
 	textarea_setup_text_offsets(ta);
 

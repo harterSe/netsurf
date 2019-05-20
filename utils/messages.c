@@ -45,106 +45,43 @@
 /** The hash table used to store the standard Messages file for the old API */
 static struct hash_table *messages_hash = NULL;
 
-/**
- * process a line of input.
- */
-static nserror
-message_process_line(struct hash_table *hash, uint8_t *ln, int lnlen)
-{
-	uint8_t *value;
-	uint8_t *colon;
-
-	/* empty or comment lines */
-	if (ln[0] == 0 || ln[0] == '#') {
-		return NSERROR_OK;
-	}
-
-	/* find first colon as key/value separator */
-	for (colon = ln; colon < (ln + lnlen); colon++) {
-		if (*colon == ':') {
-			break;
-		}
-	}
-	if (colon == (ln + lnlen)) {
-		/* no colon found */
-		return NSERROR_INVALID;
-	}
-
-	*colon = 0;  /* terminate key */
-	value = colon + 1;
-
-	if (hash_add(hash, (char *)ln, (char *)value) == false) {
-		LOG("Unable to add %s:%s to hash table", ln, value);
-		return NSERROR_INVALID;
-	}
-	return NSERROR_OK;
-}
 
 /**
  * Read keys and values from messages file.
  *
  * \param  path  pathname of messages file
- * \param  ctx   reference of hash table to merge with.
+ * \param  ctx   reference of hash table to merge with or NULL to create one.
  * \return NSERROR_OK on sucess and ctx updated or error code on faliure.
  */
 static nserror messages_load_ctx(const char *path, struct hash_table **ctx)
 {
-	char s[400]; /* line buffer */
-	gzFile fp; /* compressed file handle */
 	struct hash_table *nctx; /* new context */
+	nserror res;
 
-	assert(path != NULL);
-
-	fp = gzopen(path, "r");
-	if (!fp) {
-		LOG("Unable to open messages file \"%.100s\": %s", path, strerror(errno));
-
-		return NSERROR_NOT_FOUND;
-	}
-
-	if (*ctx == NULL) {
-		nctx = hash_create(HASH_SIZE);
-	} else {
+	if (*ctx != NULL) {
 		/**
 		 * \note The passed hash is not copied here so this
 		 * updates in place.
 		 */
-		nctx = *ctx;
+		return hash_add_file(*ctx, path);
 	}
+
+	nctx = hash_create(HASH_SIZE);
 	if (nctx == NULL) {
-		LOG("Unable to create hash table for messages file %s", path);
-		gzclose(fp);
+		NSLOG(netsurf, INFO,
+		      "Unable to create hash table for messages file %s",
+		      path);
 		return NSERROR_NOMEM;
 	}
 
-	while (gzgets(fp, s, sizeof s)) {
-		char *colon, *value;
-
-		if (s[0] == 0 || s[0] == '#')
-			continue;
-
-		s[strlen(s) - 1] = 0;  /* remove \n at end */
-		colon = strchr(s, ':');
-		if (!colon)
-			continue;
-		*colon = 0;  /* terminate key */
-		value = colon + 1;
-
-		if (hash_add(nctx, s, value) == false) {
-			LOG("Unable to add %s:%s to hash table of %s", s, value, path);
-			gzclose(fp);
-			if (*ctx == NULL) {
-				hash_destroy(nctx);
-			}
-			return NSERROR_INVALID;
-		}
+	res = hash_add_file(nctx, path);
+	if (res == NSERROR_OK) {
+		*ctx = nctx;
+	} else {
+		hash_destroy(nctx);
 	}
 
-	gzclose(fp);
-
-	*ctx = nctx;
-
-	return NSERROR_OK;
+	return res;
 }
 
 
@@ -177,96 +114,47 @@ messages_get_ctx(const char *key, struct hash_table *ctx)
 	return r;
 }
 
-/* exported interface documented in messages.h */
-nserror messages_add_from_file(const char *path)
+
+/**
+ * Free memory used by a messages hash.
+ * The context will not be valid after this function returns.
+ *
+ * \param  ctx  context of messages file to free
+ */
+static void messages_destroy_ctx(struct hash_table *ctx)
 {
-	nserror err;
+	if (ctx == NULL)
+		return;
 
-	if (path == NULL) {
-		return NSERROR_BAD_PARAMETER;
-	}
-
-	LOG("Loading Messages from '%s'", path);
-
-	err = messages_load_ctx(path, &messages_hash);
-
-
-	return err;
+	hash_destroy(ctx);
 }
 
 
 /* exported interface documented in messages.h */
-nserror messages_add_from_inline(const uint8_t *data, size_t data_size)
+nserror messages_add_from_file(const char *path)
 {
-	z_stream strm;
-	int ret;
-	uint8_t s[512]; /* line buffer */
-	size_t used = 0; /* number of bytes in buffer in use */
-	uint8_t *nl;
+	if (path == NULL) {
+		return NSERROR_BAD_PARAMETER;
+	}
 
+	NSLOG(netsurf, INFO, "Loading Messages from '%s'", path);
+
+	return messages_load_ctx(path, &messages_hash);
+}
+
+
+/* exported interface documented in messages.h */
+nserror messages_add_from_inline(const uint8_t *data, size_t size)
+{
 	/* ensure the hash table is initialised */
 	if (messages_hash == NULL) {
 		messages_hash = hash_create(HASH_SIZE);
 	}
 	if (messages_hash == NULL) {
-		LOG("Unable to create hash table");
+		NSLOG(netsurf, INFO, "Unable to create hash table");
 		return NSERROR_NOMEM;
 	}
-
-	strm.zalloc = Z_NULL;
-	strm.zfree = Z_NULL;
-	strm.opaque = Z_NULL;
-
-	strm.next_in = (uint8_t *)data;
-	strm.avail_in = data_size;
-
-	ret = inflateInit2(&strm, 32 + MAX_WBITS);
-	if (ret != Z_OK) {
-		LOG("inflateInit returned %d", ret);
-		return NSERROR_INVALID;
-	}
-
-	do {
-		strm.next_out = s + used;
-		strm.avail_out = sizeof(s) - used;
-
-		ret = inflate(&strm, Z_NO_FLUSH);
-		if ((ret != Z_OK) && (ret != Z_STREAM_END)) {
-			break;
-		}
-
-		used = sizeof(s) - strm.avail_out;
-		while (used > 0) {
-			/* find nl */
-			for (nl = &s[0]; nl < &s[used]; nl++) {
-				if (*nl == '\n') {
-					break;
-				}
-			}
-			if (nl == &s[used]) {
-				/* no nl found */
-				break;
-			}
-			/* found newline */
-			*nl = 0; /* null terminate line */
-			message_process_line(messages_hash, &s[0], nl - &s[0]);
-			memmove(&s[0], nl + 1, used - ((nl + 1) - &s[0]) );
-			used -= ((nl +1) - &s[0]);
-		}
-		if (used == sizeof(s)) {
-			/* entire buffer used and no newline */
-			LOG("Overlength line");
-			used = 0;
-		}
-	} while (ret != Z_STREAM_END);
-
-	inflateEnd(&strm);
-
-	if (ret != Z_STREAM_END) {
-		LOG("inflate returned %d", ret);
-		return NSERROR_INVALID;
-	}
-	return NSERROR_OK;
+	return hash_add_inline(messages_hash, data, size);
 }
 
 /* exported interface documented in messages.h */
@@ -322,6 +210,10 @@ const char *messages_get_errorcode(nserror code)
 		/* Requested item not found */
 		return messages_get_ctx("NotFound", messages_hash);
 
+	case NSERROR_NOT_DIRECTORY:
+		/* Missing directory */
+		return messages_get_ctx("NotDirectory", messages_hash);
+
 	case NSERROR_SAVE_FAILED:
 		/* Failed to save data */
 		return messages_get_ctx("SaveFailed", messages_hash);
@@ -334,9 +226,29 @@ const char *messages_get_errorcode(nserror code)
 		/* Initialisation failed */
 		return messages_get_ctx("InitFailed", messages_hash);
 
-	case NSERROR_MNG_ERROR:
-		/* An MNG error occurred */
-		return messages_get_ctx("MNGError", messages_hash);
+	case NSERROR_BMP_ERROR:
+		/* A BMP error occurred */
+		return messages_get_ctx("BMPError", messages_hash);
+
+	case NSERROR_GIF_ERROR:
+		/* A GIF error occurred */
+		return messages_get_ctx("GIFError", messages_hash);
+
+	case NSERROR_ICO_ERROR:
+		/* A ICO error occurred */
+		return messages_get_ctx("ICOError", messages_hash);
+
+	case NSERROR_PNG_ERROR:
+		/* A PNG error occurred */
+		return messages_get_ctx("PNGError", messages_hash);
+
+	case NSERROR_SPRITE_ERROR:
+		/* A RISC OS Sprite error occurred */
+		return messages_get_ctx("SpriteError", messages_hash);
+
+	case NSERROR_SVG_ERROR:
+		/* A SVG error occurred */
+		return messages_get_ctx("SVGError", messages_hash);
 
 	case NSERROR_BAD_ENCODING:
 		/* The character set is unknown */
@@ -382,11 +294,47 @@ const char *messages_get_errorcode(nserror code)
 		/* Bad URL */
 		return messages_get_ctx("BadURL", messages_hash);
 
-	default:
+	case NSERROR_BAD_CONTENT:
+		/* Bad Content */
+		return messages_get_ctx("BadContent", messages_hash);
+
+	case NSERROR_FRAME_DEPTH:
+		/* Exceeded frame depth */
+		return messages_get_ctx("FrameDepth", messages_hash);
+
+	case NSERROR_PERMISSION:
+		/* Permission error */
+		return messages_get_ctx("PermissionError", messages_hash);
+
+	case NSERROR_BAD_SIZE:
+		/* Bad size */
+		return messages_get_ctx("BadSize", messages_hash);
+
+	case NSERROR_NOSPACE:
+		/* Insufficient space */
+		return messages_get_ctx("NoSpace", messages_hash);
+
+	case NSERROR_NOT_IMPLEMENTED:
+		/* Functionality is not implemented */
+		return messages_get_ctx("NotImplemented", messages_hash);
+
 	case NSERROR_UNKNOWN:
-		break;
+		/* Unknown error */
+		return messages_get_ctx("Unknown", messages_hash);
 	}
 
-	/* Unknown error */
+	/* The switch has no default, so the compiler should tell us when we
+	 * forget to add messages for new error codes.  As such, we should
+	 * never get here.
+	 */
+	assert(0);
 	return messages_get_ctx("Unknown", messages_hash);
+}
+
+
+/* exported function documented in utils/messages.h */
+void messages_destroy(void)
+{
+	messages_destroy_ctx(messages_hash);
+	messages_hash = NULL;
 }

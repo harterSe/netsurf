@@ -81,7 +81,8 @@ static struct nsgtk_resource_s ui_resource[] = {
 	RES_ENTRY("ssl"),
 	RES_ENTRY("toolbar"),
 	RES_ENTRY("downloads"),
-	RES_ENTRY("history"),
+	RES_ENTRY("globalhistory"),
+	RES_ENTRY("localhistory"),
 	RES_ENTRY("options"),
 	RES_ENTRY("hotlist"),
 	RES_ENTRY("cookies"),
@@ -128,6 +129,7 @@ static struct nsgtk_resource_s direct_resource[] = {
 	RES_ENTRY("icons/hotlist-rmv.png"),
 	RES_ENTRY("icons/search.png"),
 	RES_ENTRY("languages"),
+	RES_ENTRY("accelerators"),
 	RES_ENTRY("Messages"),
 	{ NULL, 0, NSGTK_RESOURCE_FILE, NULL },
 };
@@ -177,11 +179,12 @@ init_resource(char **respath, struct nsgtk_resource_s *resource)
 
 	langv = g_get_language_names();
 
+	/* look for resource under per language paths */
 	while (langv[langc] != NULL) {
+		/* allocate and fill a full resource name path buffer */
 		resnamelen = snprintf(NULL, 0,
 				      "/org/netsurf/%s/%s",
 				      langv[langc], resource->name);
-
 		resname = malloc(resnamelen + 1);
 		if (resname == NULL) {
 			return NSERROR_NOMEM;
@@ -190,6 +193,7 @@ init_resource(char **respath, struct nsgtk_resource_s *resource)
 			 "/org/netsurf/%s/%s",
 			 langv[langc], resource->name);
 
+		/* check if resource is present */
 		present = g_resources_get_info(resname,
 					       G_RESOURCE_LOOKUP_FLAGS_NONE,
 					       NULL, NULL, NULL);
@@ -197,16 +201,19 @@ init_resource(char **respath, struct nsgtk_resource_s *resource)
 			/* found an entry in the resources */
 			resource->path = resname;
 			resource->type = NSGTK_RESOURCE_GLIB;
-			LOG("Found gresource path %s", resource->path);
+			NSLOG(netsurf, INFO, "Found gresource path %s",
+			      resource->path);
 			return NSERROR_OK;
 		}
-		/*LOG("gresource \"%s\" not found", resname);*/
+		NSLOG(netsurf, DEEPDEBUG,
+		      "gresource \"%s\" not found", resname);
 		free(resname);
 
 		langc++;
 	}
-	resnamelen = snprintf(NULL, 0, "/org/netsurf/%s", resource->name);
 
+	/* allocate and fill a full resource name path buffer with no language*/
+	resnamelen = snprintf(NULL, 0, "/org/netsurf/%s", resource->name);
 	resname = malloc(resnamelen + 1);
 	if (resname == NULL) {
 		return NSERROR_NOMEM;
@@ -220,27 +227,31 @@ init_resource(char **respath, struct nsgtk_resource_s *resource)
 		/* found an entry in the resources */
 		resource->path = resname;
 		resource->type = NSGTK_RESOURCE_GLIB;
-		LOG("Found gresource path %s", resource->path);
+		NSLOG(netsurf, INFO, "Found gresource path %s",
+		      resource->path);
 		return NSERROR_OK;
 	}
-	/*LOG("gresource \"%s\" not found", resname);*/
+	NSLOG(netsurf, DEEPDEBUG, "gresource \"%s\" not found", resname);
 	free(resname);
 
 #endif
 
+	/* look for file on disc */
 	resname = filepath_find(respath, resource->name);
-	if (resname == NULL) {
-		LOG("Unable to find resource %s on resource path",
-		    resource->name);
-		return NSERROR_NOT_FOUND;
+	if (resname != NULL) {
+		/* found an entry on the path */
+		resource->path = resname;
+		resource->type = NSGTK_RESOURCE_FILE;
+
+		NSLOG(netsurf, INFO,
+		      "Found file resource path %s", resource->path);
+		return NSERROR_OK;
 	}
 
-	/* found an entry on the path */
-	resource->path = resname;
-	resource->type = NSGTK_RESOURCE_FILE;
+	NSLOG(netsurf, INFO, "Unable to find resource %s on resource path",
+	      resource->name);
 
-	LOG("Found file resource path %s", resource->path);
-	return NSERROR_OK;
+	return NSERROR_NOT_FOUND;
 }
 
 /**
@@ -294,21 +305,21 @@ init_pixbuf_resource(char **respath, struct nsgtk_resource_s *resource)
 	if (strncmp(resource->name, "menu_cursor.png", resource->len) == 0) {
 		resource->path = (char *)&menu_cursor_pixdata[0];
 		resource->type = NSGTK_RESOURCE_INLINE;
-		LOG("Found builtin for %s", resource->name);
+		NSLOG(netsurf, INFO, "Found builtin for %s", resource->name);
 		return NSERROR_OK;
 	}
 
 	if (strncmp(resource->name, "netsurf.xpm", resource->len) == 0) {
 		resource->path = (char *)&netsurf_pixdata[0];
 		resource->type = NSGTK_RESOURCE_INLINE;
-		LOG("Found builtin for %s", resource->name);
+		NSLOG(netsurf, INFO, "Found builtin for %s", resource->name);
 		return NSERROR_OK;
 	}
 
 	if (strncmp(resource->name, "favicon.png", resource->len) == 0) {
 		resource->path = (char *)&favicon_pixdata[0];
 		resource->type = NSGTK_RESOURCE_INLINE;
-		LOG("Found builtin for %s", resource->name);
+		NSLOG(netsurf, INFO, "Found builtin for %s", resource->name);
 		return NSERROR_OK;
 	}
 #endif
@@ -376,7 +387,7 @@ find_resource_from_name(const char *resname, struct nsgtk_resource_s *resource)
 
 #ifdef SHOW_GRESOURCE
 /**
- * Debug dump of all resources compile din via GResource.
+ * Debug dump of all resources compiled in via GResource.
  */
 static void list_gresource(void)
 {
@@ -388,13 +399,13 @@ static void list_gresource(void)
 						 G_RESOURCE_LOOKUP_FLAGS_NONE,
 						 &gerror);
 	if (gerror) {
-		LOG("gerror %s", gerror->message);
+		NSLOG(netsurf, INFO, "gerror %s", gerror->message);
 		g_error_free(gerror);
 
 	} else {
 		cur = reslist;
 		while (cur != NULL && *cur != NULL) {
-			LOG("gres %s", *cur);
+			NSLOG(netsurf, INFO, "gres %s", *cur);
 			cur++;
 		}
 		g_strfreev(reslist);
@@ -487,12 +498,17 @@ nsgdk_pixbuf_new_from_resname(const char *resname, GdkPixbuf **pixbuf_out)
 
 	if (new_pixbuf == NULL) {
 		if (error != NULL) {
-			LOG("Unable to create pixbuf from file for %s with path %s \"%s\"",
-			    resource->name, resource->path, error->message);
+			NSLOG(netsurf, INFO,
+			      "Unable to create pixbuf from file for %s with path %s \"%s\"",
+			      resource->name,
+			      resource->path,
+			      error->message);
 			g_error_free(error);
 		} else {
-			LOG("Unable to create pixbuf from file for %s with path %s",
-			    resource->name, resource->path);
+			NSLOG(netsurf, INFO,
+			      "Unable to create pixbuf from file for %s with path %s",
+			      resource->name,
+			      resource->path);
 		}
 		return NSERROR_INIT_FAILED;
 	}
@@ -520,8 +536,11 @@ nsgtk_builder_new_from_resname(const char *resname, GtkBuilder **builder_out)
 		if (!gtk_builder_add_from_file(new_builder,
 					       ui_res->path,
 					       &error)) {
-			LOG("Unable to add UI builder from file for %s with path %s \"%s\"",
-			    ui_res->name, ui_res->path, error->message);
+			NSLOG(netsurf, INFO,
+			      "Unable to add UI builder from file for %s with path %s \"%s\"",
+			      ui_res->name,
+			      ui_res->path,
+			      error->message);
 			g_error_free(error);
 			g_object_unref(G_OBJECT(new_builder));
 			return NSERROR_INIT_FAILED;
@@ -530,8 +549,11 @@ nsgtk_builder_new_from_resname(const char *resname, GtkBuilder **builder_out)
 		if (!nsgtk_builder_add_from_resource(new_builder,
 						     ui_res->path,
 						     &error)) {
-			LOG("Unable to add UI builder from resource for %s with path %s \"%s\"",
-			    ui_res->name, ui_res->path, error->message);
+			NSLOG(netsurf, INFO,
+			      "Unable to add UI builder from resource for %s with path %s \"%s\"",
+			      ui_res->name,
+			      ui_res->path,
+			      error->message);
 			g_error_free(error);
 			g_object_unref(G_OBJECT(new_builder));
 			return NSERROR_INIT_FAILED;

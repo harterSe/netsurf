@@ -21,6 +21,7 @@
  */
 
 #include <oslib/wimp.h>
+#include <oslib/help.h>
 #include <oslib/taskmanager.h>
 
 #include "utils/nsoption.h"
@@ -30,7 +31,6 @@
 #include "netsurf/mouse.h"
 #include "netsurf/window.h"
 
-#include "riscos/treeview.h"
 #include "riscos/help.h"
 #include "riscos/wimp_event.h"
 #include "riscos/hotlist.h"
@@ -132,16 +132,16 @@ void ro_gui_interactive_help_request(wimp_message *message)
 	} else if (window == wimp_ICON_BAR)
 		sprintf(message_token, "HelpIconbar");
 	else if (ro_gui_hotlist_check_window(message->data.data_xfer.w)) {
-		i = ro_treeview_get_help(message_data);
+		i = -1;
 		sprintf(message_token,
 				(i >= 0) ? "HelpTree%i" :"HelpHotlist%i", i);
 	} else if (ro_gui_global_history_check_window(
 			message->data.data_xfer.w)) {
-		i = ro_treeview_get_help(message_data);
+		i = -1;
 		sprintf(message_token,
 				(i >= 0) ? "HelpTree%i" :"HelpGHistory%i", i);
 	} else if (ro_gui_cookies_check_window(message->data.data_xfer.w)) {
-		i = ro_treeview_get_help(message_data);
+		i = -1;
 		sprintf(message_token,
 				(i >= 0) ? "HelpTree%i" :"HelpCookies%i", i);
 	} else if (ro_gui_window_lookup(window) != NULL)
@@ -166,7 +166,8 @@ void ro_gui_interactive_help_request(wimp_message *message)
 	error = xwimp_get_menu_state(wimp_GIVEN_WINDOW_AND_ICON,
 				&menu_tree, window, icon);
 	if (error) {
-		LOG("xwimp_get_menu_state: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_get_menu_state: 0x%x: %s",
+		      error->errnum, error->errmess);
 		ro_warn_user("WimpError", error->errmess);
 		return;
 	}
@@ -269,7 +270,8 @@ static void ro_gui_interactive_help_broadcast(wimp_message *message,
 	error = xwimp_send_message(wimp_USER_MESSAGE, (wimp_message *)reply,
 			reply->sender);
 	if (error) {
-		LOG("xwimp_send_message: 0x%x: %s", error->errnum, error->errmess);
+		NSLOG(netsurf, INFO, "xwimp_send_message: 0x%x: %s",
+		      error->errnum, error->errmess);
 		ro_warn_user("WimpError", error->errmess);
 	}
 }
@@ -297,7 +299,10 @@ bool ro_gui_interactive_help_available(void)
 		error = xtaskmanager_enumerate_tasks(context, &task,
 				sizeof(taskmanager_task), &context, 0);
 		if (error) {
-			LOG("xtaskmanager_enumerate_tasks: 0x%x: %s", error->errnum, error->errmess);
+			NSLOG(netsurf, INFO,
+			      "xtaskmanager_enumerate_tasks: 0x%x: %s",
+			      error->errnum,
+			      error->errmess);
 			ro_warn_user("MiscError", error->errmess);
 		}
 
@@ -334,7 +339,8 @@ void ro_gui_interactive_help_start(void)
 	if ((help_start) && (help_start[0])) {
 		error = xwimp_start_task("<Help$Start>", &task);
 		if (error) {
-			LOG("xwimp_start_tast: 0x%x: %s", error->errnum, error->errmess);
+			NSLOG(netsurf, INFO, "xwimp_start_tast: 0x%x: %s",
+			      error->errnum, error->errmess);
 			ro_warn_user("WimpError", error->errmess);
 			return;
 		}
@@ -344,7 +350,8 @@ void ro_gui_interactive_help_start(void)
 	if (!task) {
 		error = xwimp_start_task("Resources:$.Apps.!Help", &task);
 		if (error) {
-			LOG("xwimp_start_tast: 0x%x: %s", error->errnum, error->errmess);
+			NSLOG(netsurf, INFO, "xwimp_start_tast: 0x%x: %s",
+			      error->errnum, error->errmess);
 			ro_warn_user("WimpError", error->errmess);
 			return;
 		}
@@ -354,7 +361,10 @@ void ro_gui_interactive_help_start(void)
 	if (task) {
 		error = xos_read_monotonic_time(&help_time);
 		if (error) {
-			LOG("xwimp_read_monotonic_time: 0x%x: %s", error->errnum, error->errmess);
+			NSLOG(netsurf, INFO,
+			      "xwimp_read_monotonic_time: 0x%x: %s",
+			      error->errnum,
+			      error->errmess);
 			ro_warn_user("WimpError", error->errmess);
 		}
 	}
